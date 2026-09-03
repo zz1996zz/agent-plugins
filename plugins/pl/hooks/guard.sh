@@ -10,6 +10,8 @@
 # 판정은 셸 세그먼트(&& || ; | 개행) 단위, 인용문을 벗긴 토큰 기준이다. 커밋 메시지 속
 # "--force" 는 플래그가 아니고, `echo "git reset --hard"` 는 git 명령이 아니다.
 set -uo pipefail
+# jq 가 없으면 페이로드를 읽을 수 없다. 모든 Bash 를 막는 것보다 조용히 비활성이 낫지만,
+# 그래서 README 전제조건에 jq 를 적어 두었다 — 여기서 빠지면 훅이 있는 줄 알고 없는 셈이 된다.
 command -v jq >/dev/null 2>&1 || exit 0
 
 input="$(cat)"
