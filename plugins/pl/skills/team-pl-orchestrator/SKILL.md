@@ -40,6 +40,16 @@ Keep raw debate, secrets, credentials, and unbounded command output out of durab
 
 If a backend write fails mid-work, save the note content under `${CLAUDE_PLUGIN_DATA}/pending/` as markdown, report the failure, and close as `done-with-risks`. On the next run, replay a non-empty `pending/` into the backend as an upsert (update the page or file if it already exists) before starting new work.
 
+## Repo-local config
+
+If the current repository has `.claude/pl.local.md`, read its YAML frontmatter at intake. It carries per-clone settings that would otherwise have to be repeated in every request:
+
+- `workNamespace` — the memory work slug. Precedence: a namespace named in the request > this value > the canonical repository name (`references/memory-templates.md`).
+- `verifyCommands` — a list of commands that must pass before the feature may close as `done`. Run them in the Verify step in addition to the narrowest relevant tests; a failure or an unrunnable command is recorded as an evidence gap under the completion contract.
+- `protectedPaths` — paths no teammate may edit and the lead edits only on explicit user request. The change-shape gate treats them as outside every ownership list.
+
+Ignore unknown keys. The file is user-owned configuration: never create or edit it yourself, and if it exists but is untracked, mention once that `.gitignore` may want it.
+
 ## References
 
 Each reference is the single source for its topic; do not restate its rules elsewhere.
@@ -78,6 +88,7 @@ Keep the team small enough to reduce coordination cost; select only value-adding
 ## Workflow
 
 1. Intake
+   - Read `.claude/pl.local.md` if present (Repo-local config above).
    - Ask at most one blocking question only when implementation would otherwise be unsafe or impossible.
 
 2. Audit team and select roles
@@ -108,10 +119,11 @@ Keep the team small enough to reduce coordination cost; select only value-adding
    - The PL lead owns final integration; delegate edits only with isolated file/module ownership (see `references/debate-protocol.md`).
    - Create dependency-aware implementation tasks and execute only currently unblocked work in parallel.
    - For complex or risky delegated edits, require the teammate's plan to be approved before implementation.
+   - After each delegated wave, run the change-shape gate from `references/debate-protocol.md` before accepting anything: every changed or new path must fall inside that wave's ownership lists.
    - Update the feature-note execution ledger after each completed wave.
 
 7. Verify
-   - Run the narrowest meaningful tests first, then broader tests when risk or touched surface requires it.
+   - Run the narrowest meaningful tests first, then broader tests when risk or touched surface requires it. Then run every `verifyCommands` entry from `.claude/pl.local.md` when the file exists.
    - For runnable or user-facing behavior, verify the actual app, CLI, or service path. Explicitly invoke Claude Code's `/verify` when it fits a standard project launch (no longer auto-run, 2.1.215+), or the repo's documented run procedure; tests alone are not full behavioral evidence.
    - Treat teammate claims as unverified until the PL sees fresh command output or independently checks the artifact.
    - If a verification step cannot run, record the exact reason and residual risk. Never convert unavailable evidence into a passing claim.

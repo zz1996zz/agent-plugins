@@ -54,6 +54,8 @@ The PL lead summarizes:
 - Proposed implementation plan
 - Proposed verification plan
 
+Read overlap as signal, not duplication. Lanes are disjoint by design (`references/roles.md` Lane Discipline), so when two roles independently raise the same point it is a defect visible from two directions — it goes to the top of the work list, not into a deduplicated pile. When two roles' advice pulls in opposite directions, carry both sides' evidence into the decision; do not silently pick a winner or average them. Collect every item a role marked as unverifiable from static reading into one list — teammates cannot check runtime wiring, and that check is the lead's.
+
 ## Round 2: Critique
 
 Use direct teammate messages for material critique instead of sending every message to everyone. Assign one peer challenge per material disagreement or risky untested assumption surfaced in synthesis — not one per role as a quota — and skip Round 2 when synthesis surfaced none. The recipient answers each challenge. Ask for:
@@ -96,6 +98,8 @@ Prefer one final integrator. Agent Teams teammates share the working directory, 
 
 Run only unblocked tasks in parallel. At every interface handoff, the producing teammate directly messages the consumer with the exact contract and evidence. Update the feature-note execution ledger after each completed wave so work can resume safely after compaction.
 
+**Change-shape gate.** After each delegated wave, before accepting any deliverable, run `git status --porcelain` (it covers modified and untracked files) and compare every path against the union of the file/module ownership lists on that wave's tasks, plus `protectedPaths` from `.claude/pl.local.md` when present. A path outside every list is an ownership violation regardless of whether the change looks correct: do not accept the wave, ask the owning teammate to revert the path or justify it, and record the incident in the execution ledger. The one-owner-per-file rule above is only as real as this check — without it a violation surfaces later as a conflicting edit or not at all.
+
 Do not coordinate role work through panes or ad hoc messages alone: every active teammate must own a visible shared task. After the lead accepts a teammate's final deliverable and no revision, dependency, or re-review remains, ask that teammate to shut down instead of retaining an idle pane.
 
 ## Review Loop
@@ -110,6 +114,7 @@ After implementation:
 4. Ask QA to verify test coverage.
 5. Ask data-engineer, integration-reviewer, or security-reviewer when the changed surface touches those areas.
 6. Validate reviewer findings against the repo, fix material issues, rerun relevant tests, and re-review changed risk surfaces.
+7. When more than one reviewer ran, merge their reports the way Synthesis does: overlapping findings first (highest confidence — the lanes are disjoint), conflicting advice with both sides' grounds for the user to decide, one merged list of items no reviewer could verify statically, then a fix order by severity and blast radius. Relay each reviewer's findings as given — do not re-tier or reword them, and do not fold your own findings into their sections.
 
 ## Close
 
