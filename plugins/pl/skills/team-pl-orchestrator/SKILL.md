@@ -34,7 +34,7 @@ Durable memory lives in the user-selected backend. Before feature work, load the
 - `backend: obsidian` → follow `references/memory-obsidian.md` only.
 - `backend: notion` → follow `references/memory-notion.md` only.
 
-Both adapters implement one contract: recall relevant context, ensure the work namespace, create the feature note, update its ledger after each completed task wave, record durable decisions, and run the adapter integrity check before closing. Note sections and status vocabulary are identical across backends; `references/memory-templates.md` is the single source for note structure and work-namespace selection (user-named slug, else the canonical repository name — never the worktree/directory name — else `inbox`).
+Both adapters implement one contract: recall relevant context, ensure the work namespace, create the feature note, update its ledger after each completed task wave, record durable decisions, and run the adapter integrity check before closing. Note sections and status vocabulary are identical across backends; `references/memory-templates.md` is the single source for note structure and work-namespace selection (user-named slug, else `workNamespace` from `.claude/pl.local.md`, else the canonical repository name — never the worktree/directory name — else `inbox`).
 
 Keep raw debate, secrets, credentials, and unbounded command output out of durable memory. The feature note is the recovery ledger across compaction or session interruption.
 
@@ -160,3 +160,5 @@ After changing this system, run:
 - `python3 "${CLAUDE_PLUGIN_ROOT}/skills/team-pl-orchestrator/scripts/test_memory_note.py"`
 - `python3 "${CLAUDE_PLUGIN_ROOT}/skills/team-pl-orchestrator/scripts/test_pl_user_config.py"`
 - `python3 "${CLAUDE_PLUGIN_ROOT}/skills/team-pl-orchestrator/scripts/memory_note.py" --root <vault-root> check` (obsidian backend only)
+
+When working in the plugin's source repository (not an installed copy), also run the behavior tests at the repo root — they are not shipped with the plugin: `tests/pl-guard/run-unit.sh` after touching `hooks/guard.sh`, `tests/pl-e2e/run-unit.sh` after touching `tests/pl-e2e/asserts.sh`, and `tests/pl-e2e/run-safety.sh` (real sessions, costs tokens) after changing this skill, its references, or the agents.

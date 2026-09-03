@@ -4,7 +4,7 @@
 
 **`/pl:pl` 한 번으로 역할 에이전트 팀이 토론하고, 구현하고, 검증하고, 결정을 기억합니다**
 
-![version](https://img.shields.io/badge/version-0.2.0-blue)
+![version](https://img.shields.io/badge/version-0.2.1-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![memory](https://img.shields.io/badge/memory-Obsidian%20%7C%20Notion-7c3aed)
 ![agents](https://img.shields.io/badge/role%20agents-9-success)
@@ -42,7 +42,7 @@ flowchart LR
 
 ## 설치
 
-> **전제조건**: macOS/Linux + `python3` 3.10 이상 (Obsidian 백엔드 헬퍼가 Unix 전용 잠금 `fcntl`을 사용합니다. Windows 미지원). 마켓플레이스 접근 조건은 [루트 README](../../README.md#설치) 참조.
+> **전제조건**: macOS/Linux + `python3` 3.10 이상 (Obsidian 백엔드 헬퍼가 Unix 전용 잠금 `fcntl`을 사용합니다. Windows 미지원) + `jq` ([안전 훅](#안전-훅)이 도구 호출 페이로드를 읽는 데 씁니다 — 없으면 훅이 **조용히 비활성**됩니다. macOS: `brew install jq`). 마켓플레이스 접근 조건은 [루트 README](../../README.md#설치) 참조.
 
 ```
 /plugin marketplace add zz1996zz/claude-code-plugins
