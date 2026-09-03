@@ -19,6 +19,10 @@ This file is the single source for role selection, name mapping, model and tool 
 - `team-pl-security-reviewer` — auth, permissions, secrets, PII, payments, untrusted input, external integrations, or command execution.
 - `team-pl-integration-reviewer` — third-party APIs, webhooks, queues, MCP servers, carrier/vendor systems, or cross-service workflows.
 
+## Lane Discipline
+
+Each role reports only findings inside its own lane, which its agent definition states under "Your lane". A finding that belongs to another role is noise in this role's memo: name the owning role in one line and move on, without expanding into that role's analysis. Lanes are disjoint on purpose. That is what gives overlap its meaning in synthesis — the same finding from two roles is a defect visible from two directions, not a duplicate to collapse — and it keeps a Sonnet role from padding its memo with another role's work.
+
 ## Runtime Name Mapping
 
 Use these predictable runtime names so direct messages, task assignment, restart, and shutdown target the correct session:

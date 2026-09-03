@@ -34,6 +34,7 @@ Store new work under a 업무/project namespace (path shown for the Obsidian bac
 
 Selection rule:
 - If the user names a 업무/project/product, slugify that name.
+- Otherwise, if the repository has `.claude/pl.local.md` with `workNamespace` in its frontmatter (see SKILL.md, Repo-local config), use that slug.
 - Otherwise use the canonical repository name: the basename of `git remote get-url origin` with any `.git` suffix removed. With no remote, use the main repository directory name (resolve `git rev-parse --git-common-dir` to the repository root) — never the worktree or workspace directory name; some launchers run sessions in renamed worktrees. Outside a git repository, treat the namespace as unclear.
 - If neither is clear, ask the user one concise question to name the namespace; only when that is not possible, use `inbox` as a temporary namespace and record why.
 
