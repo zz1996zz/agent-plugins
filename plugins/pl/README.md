@@ -4,7 +4,7 @@
 
 **`/pl:pl` 한 번으로 역할 에이전트 팀이 토론하고, 구현하고, 검증하고, 결정을 기억합니다**
 
-![version](https://img.shields.io/badge/version-0.1.11-blue)
+![version](https://img.shields.io/badge/version-0.2.0-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![memory](https://img.shields.io/badge/memory-Obsidian%20%7C%20Notion-7c3aed)
 ![agents](https://img.shields.io/badge/role%20agents-9-success)
@@ -59,7 +59,7 @@ flowchart LR
 
 - routine한 요청(오탈자 점검 등)은 솔로 패스로 가볍게 처리됩니다.
 - 기능 작업이면 역할 팀 구성 → 토론 → 결정 → 구현 → 검증 → 메모리 기록까지 진행됩니다.
-- work 네임스페이스는 **canonical 레포명**(origin remote 기준)으로 정해집니다 — worktree나 워크스페이스 디렉토리 이름에 영향받지 않습니다. 특정 업무로 기록하려면 요청에 업무명을 명시하세요.
+- work 네임스페이스는 **canonical 레포명**(origin remote 기준)으로 정해집니다 — worktree나 워크스페이스 디렉토리 이름에 영향받지 않습니다. 특정 업무로 기록하려면 요청에 업무명을 명시하거나, 레포에 고정하려면 [레포 로컬 설정](#레포-로컬-설정-선택)의 `workNamespace`를 쓰세요.
 
 ## 메모리 백엔드 (온보딩 1회)
 
@@ -75,6 +75,37 @@ flowchart LR
 - Notion MCP 서버는 플러그인에 동봉되지 않습니다 — Notion 백엔드를 선택했을 때만 온보딩이 추가를 안내합니다. Obsidian만 쓰면 외부 서비스 의존성이 0입니다.
 - `config.json`이 유실돼도(재설치·`uninstall` 등) vault가 남아 있으면 다음 실행에서 자동 탐지(`repair`)로 재연결을 제안합니다. Notion 백엔드는 디스크에서 탐지할 수 없어 재온보딩이 필요하며, 기존 데이터베이스는 재사용됩니다.
 - Notion 쓰기 실패 시 기록은 `${CLAUDE_PLUGIN_DATA}/pending/`에 보존됐다가 다음 실행에서 업서트로 재반영됩니다 — 조용한 유실이 없습니다.
+
+## 안전 훅
+
+설치하면 PreToolUse 훅(`hooks/guard.sh`)이 리드와 모든 팀원의 Bash 호출에서 아래를 차단합니다. pl의 안전 경계("되돌릴 수 없는 행동은 사람 손에")를 산문이 아니라 기계적으로 지키기 위한 것입니다.
+
+| 차단 | 예 |
+|---|---|
+| force-push | `git push --force`, `-f`, `--force-with-lease` |
+| hard reset | `git reset --hard` |
+| 추적되지 않은 파일 삭제 | `git clean -f`, `-fd` |
+| 검사 우회 | `--no-verify`, `git commit -n`, `git -c core.hooksPath=…` |
+| 보관·브랜치 강제 삭제 | `git stash drop`/`clear`, `git branch -D` |
+
+- **커밋·push 자체는 막지 않습니다** — 훅은 사용자가 그걸 요청했는지 알 수 없습니다. 막는 것은 어떤 요청에서도 에이전트가 스스로 택하면 안 되는 지름길입니다.
+- 해제 옵션은 없습니다. 정말 필요하면 프롬프트에 `! <명령>`으로 직접 실행하세요.
+- 인용문 안(커밋 메시지)은 판정에서 제외하고 토큰 단위로 봅니다. `git commit -m "force push 금지"`는 통과합니다.
+
+## 레포 로컬 설정 (선택)
+
+레포에 `.claude/pl.local.md`를 두면 매 요청에 반복하던 것을 생략할 수 있습니다. 리드는 이 파일을 읽기만 하고 만들거나 고치지 않습니다.
+
+```markdown
+---
+workNamespace: billing-core        # 메모리 work 슬러그 (요청에 명시한 이름 > 이 값 > canonical 레포명)
+verifyCommands:                    # done 전에 반드시 통과해야 하는 명령
+  - ./gradlew test
+protectedPaths:                    # 팀원은 절대, 리드는 명시 요청 시에만 편집
+  - infra/
+  - .github/
+---
+```
 
 ## 추천 조합 (선택)
 
@@ -104,3 +135,4 @@ pl은 단독으로 완결이지만, 아래 플러그인들과 자연스럽게 �
 
 - 시스템 변경 후 테스트 3종 실행: `skills/team-pl-orchestrator/scripts/`의 `test_pl_config.py` · `test_memory_note.py` · `test_pl_user_config.py`
 - 리드 머신 전용 검사를 건너뛰려면: `PL_SKIP_MACHINE_TESTS=1`
+- 프롬프트 문서(`SKILL.md`·`references/`·`agents/`)나 `hooks/guard.sh`를 고쳤으면 레포 루트의 행동 테스트도 돌립니다: `tests/pl-guard/run-unit.sh`(훅 판정, 토큰 불필요) · `tests/pl-e2e/run-unit.sh`(E2E 판정 로직, 토큰 불필요) · `tests/pl-e2e/run-safety.sh`(실제 세션, 토큰 소모). 자세한 것은 [`tests/pl-e2e/README.md`](../../tests/pl-e2e/README.md)
