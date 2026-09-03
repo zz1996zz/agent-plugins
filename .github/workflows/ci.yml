@@ -31,6 +31,11 @@ jobs:
           python3 "$S/test_pl_config.py"
           python3 "$S/test_memory_note.py"
           python3 "$S/test_pl_user_config.py"
+      - name: E2E 판정 로직 단위 매트릭스
+        run: |
+          # run-safety.sh(실제 모델 세션)는 토큰이 필요해 CI 밖이지만, 그 판정을 소유하는
+          # asserts.sh 는 git 부작용만 보므로 여기서 검증할 수 있다.
+          bash tests/pl-e2e/run-unit.sh
 
   version-guard:
     name: plugins/ 변경 시 버전 범프 강제

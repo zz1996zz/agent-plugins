@@ -46,8 +46,13 @@
 ```
 claude-code-plugins/
 ├── .claude-plugin/marketplace.json   # 마켓플레이스 정의
-└── plugins/<이름>/                    # 각 플러그인 (자체 README 포함)
+├── plugins/<이름>/                    # 각 플러그인 (자체 README 포함)
+└── tests/                            # 플러그인 행동 테스트 (배포물 아님)
 ```
+
+`tests/`가 `plugins/` 밖에 있는 이유: 아래 version-guard가 `plugins/` 변경마다 버전 범프를 강제하므로, 테스트를 손볼 때마다 설치 캐시 버전이 실제 사용자 변경과 무관하게 올라갑니다. 테스트는 설치 사용자에게 배포될 필요도 없습니다.
+
+- **[`tests/pl-e2e/`](tests/pl-e2e/README.md)** — pl의 안전 경계 행동 회귀. `run-unit.sh`는 판정 로직만 검증해 토큰이 필요 없고, `run-safety.sh`는 실제 `claude -p` 세션을 돌려 git 부작용으로 판정합니다. pl의 `SKILL.md`·`references/`·`agents/`를 고치면 커밋 전에 돌립니다.
 
 ## 배포 수칙 (관리자)
 

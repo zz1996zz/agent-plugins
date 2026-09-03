@@ -1,3 +1,5 @@
 __pycache__/
 .DS_Store
 .superpowers/
+tests/pl-e2e/fixtures/
+tests/pl-e2e/detail.log
