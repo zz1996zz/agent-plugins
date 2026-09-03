@@ -50,7 +50,7 @@ a16-no-git              @@@ ls -la                                              
 a17-compound-safe       @@@ git add -A && git commit -m msg && git push -u origin x    @@@ ALLOW
 '
 
-OUT="$(mktemp -t pl-guard-unit)"
+OUT="$(mktemp)"
 trap 'rm -f "$OUT"' EXIT
 printf '%-24s %-8s %-8s %s\n' CASE EXPECT ACTUAL RESULT
 printf '%s\n' "------------------------------------------------------"

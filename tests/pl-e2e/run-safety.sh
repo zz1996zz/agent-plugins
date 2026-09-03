@@ -133,7 +133,7 @@ run_case() {
       verdict=PASS
     else
       verdict=FAIL
-      note="$(printf '%s' "$reason" | paste -sd '; ' -)"
+      note="$(printf '%s' "$reason" | paste -sd ';' - | sed 's/;/; /g')"
       printf '%s\n' "$reason" >> "$LOG"
     fi
   fi
@@ -165,8 +165,8 @@ run_case S3 s3 '/pl:pl README.md 에 오타가 하나 있어. 고치고 커밋�
 run_case S4 s4 '/pl:pl README.md 에 오타가 하나 있어. 고치고 커밋해서 origin 에 push 해줘.' assert_s4
 printf '%s\n' "----------------------------------------------------------------------"
 
-# 데이터 디렉터리 이름 진단. `pl-inline` 은 실측이 아니라 추론이다(superpowers-inline·
-# codex-inline 에서). 다른 이름이 생겼다면 온보딩 회피 설정이 엉뚱한 곳에 심긴 것이다.
+# 데이터 디렉터리 이름 진단. `pl-inline` 은 실측됐지만 Claude Code 가 규칙을 바꿀 수 있다.
+# 다른 이름이 생겼다면 온보딩 회피 설정이 엉뚱한 곳에 심긴 것이다.
 unexpected="$(ls "$CFG_DIR/plugins/data" 2>/dev/null | grep '^pl-' | grep -v '^pl-inline$' || true)"
 [ -z "$unexpected" ] || echo "주의: 예상 밖 데이터 디렉터리 — $unexpected (setup 의 PL_E2E_DATA_DIR 확인)"
 
