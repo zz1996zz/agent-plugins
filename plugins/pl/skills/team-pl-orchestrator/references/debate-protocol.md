@@ -8,7 +8,7 @@ Use this protocol to create productive role-agent discussion without uncontrolle
 - Round 1: Independent Role Memos
 - Synthesis
 - Round 2: Critique
-- Teammate Reset
+- Role Session Reset
 - Decision
 - Implementation
 - Review Loop
@@ -23,26 +23,26 @@ Create a shared brief:
 - Current repo facts
 - Constraints
 - Proposed role roster
-- Predictable teammate runtime names
+- Predictable role session runtime names
 - Expected deliverables
 - Acceptance criteria and evidence required
 
-Create one shared task per independent memo. Each task must state:
+Create one ledger entry per independent memo (a shared task where the host has one; otherwise the same fields go into the spawn brief and the feature note). Each entry must state:
 - A subject prefixed with `[<feature-slug>]`
 - Task ID and owner
 - Dependencies
 - Bounded deliverable
 - Success criteria
-- Files the teammate may edit, or `read-only`
+- Files the role session may edit, or `read-only`
 - The verification command that decides completion (`Run: <command>`), when the task has a runnable check
 
 ## Round 1: Independent Role Memos
 
-Ask each selected role to respond independently. Do not show other role outputs during Round 1 unless the platform provides true agent-team communication and direct debate is useful.
+Ask each selected role to respond independently. Do not show other role outputs during Round 1.
 
 Each memo leads with its `Status:` line and covers the deliverable items defined in the role's definition body.
 
-The delivery contract in `references/roles.md` governs every memo. Never treat an idle notification alone as a delivered memo: if a teammate goes idle without one, run the idle-without-result triage in `references/team-lifecycle.md` (task state, transcript, one explicit `SendMessage` nudge) before any reset.
+The delivery contract in `references/roles.md` governs every memo. Never treat an idle or finished signal alone as a delivered memo: if a role session goes idle without one, run the idle-without-result triage in `references/team-lifecycle.md` (ledger state, host recovery steps, one explicit delivery nudge) before any reset.
 
 ## Synthesis
 
@@ -54,27 +54,27 @@ The PL lead summarizes:
 - Proposed implementation plan
 - Proposed verification plan
 
-Read overlap as signal, not duplication. Lanes are disjoint by design (`references/roles.md` Lane Discipline), so when two roles independently raise the same point it is a defect visible from two directions — it goes to the top of the work list, not into a deduplicated pile. When two roles' advice pulls in opposite directions, carry both sides' evidence into the decision; do not silently pick a winner or average them. Collect every item a role marked as unverifiable from static reading into one list — teammates cannot check runtime wiring, and that check is the lead's.
+Read overlap as signal, not duplication. Lanes are disjoint by design (`references/roles.md` Lane Discipline), so when two roles independently raise the same point it is a defect visible from two directions — it goes to the top of the work list, not into a deduplicated pile. When two roles' advice pulls in opposite directions, carry both sides' evidence into the decision; do not silently pick a winner or average them. Collect every item a role marked as unverifiable from static reading into one list — role sessions cannot check runtime wiring, and that check is the lead's.
 
 ## Round 2: Critique
 
-Use direct teammate messages for material critique instead of sending every message to everyone. Assign one peer challenge per material disagreement or risky untested assumption surfaced in synthesis — not one per role as a quota — and skip Round 2 when synthesis surfaced none. The recipient answers each challenge. Ask for:
+Use the host's peer-challenge channel for material critique instead of sending every message to everyone. Assign one peer challenge per material disagreement or risky untested assumption surfaced in synthesis — not one per role as a quota — and skip Round 2 when synthesis surfaced none. The recipient answers each challenge. Ask for:
 - What is wrong or missing?
 - Which decision is risky?
 - Which simpler option should be considered?
 - What must be tested?
 
-Each challenge must name the claim, cite repo or requirement evidence, and state what would change the recommendation. Each response must accept, reject, or narrow the claim with evidence. Both teammates then send the PL a concise revised conclusion. The delivery contract and the idle-without-result triage apply to challenge answers and revised conclusions exactly as to Round 1 memos.
+Each challenge must name the claim, cite repo or requirement evidence, and state what would change the recommendation. Each response must accept, reject, or narrow the claim with evidence. Both role sessions then deliver the PL a concise revised conclusion. The delivery contract and the idle-without-result triage apply to challenge answers and revised conclusions exactly as to Round 1 memos.
 
 Run more rounds only when there is a material unresolved conflict. Stop when the PL can state the selected option, rejected alternatives, risks, and validation plan without relying on unresolved assumptions.
 
 Record the outcome either way in the feature note's `### Round 2` section: the challenges assigned, or `skipped — no material conflict in synthesis`. Left blank, a correctly skipped round is indistinguishable later from one that ran unrecorded or from conflicts the lead never noticed.
 
-## Teammate Reset
+## Role Session Reset
 
-Use reset instead of repeated prompting when a teammate gives stale, irrelevant, wrong-role, wrong-model, or obviously low-quality output. Reset targets bad output, not merely undelivered output; for an idle teammate with no delivered memo, complete the idle-without-result triage in `references/team-lifecycle.md` first.
+Use reset instead of repeated prompting when a role session gives stale, irrelevant, wrong-role, wrong-model, or obviously low-quality output. Reset targets bad output, not merely undelivered output; for an idle role session with no delivered memo, complete the idle-without-result triage in `references/team-lifecycle.md` first.
 
-Before any reset, save useful facts from the teammate's output into the PL synthesis, and settle or reassign its shared task without marking abandoned work complete. Then follow the replacement procedure in `references/team-lifecycle.md` under Teammate Health and Restart. Use at most one repair prompt before reset. Do not let one confused teammate dominate the discussion.
+Before any reset, save useful facts from the role session's output into the PL synthesis, and settle or reassign its ledger entry without marking abandoned work complete. Then follow the replacement procedure in `references/team-lifecycle.md` under Role Session Health and Restart. Use at most one repair prompt before reset. Do not let one confused role session dominate the discussion.
 
 ## Decision
 
@@ -90,17 +90,17 @@ Record durable decisions in memory.
 
 Before any edit, run an analyze gate: check that the decisions, the implementation plan, and the shared tasks are consistent — every decision maps to at least one task, every task traces back to the plan, and no accepted decision or required deliverable is missing a task. Resolve mismatches before delegating work; a gap here surfaces later as unowned or contradictory implementation.
 
-Before delegated implementation, convert the decision into dependency-aware shared tasks. Assign one owner per task and one owner per file. For complex or risky edits, require plan approval before the implementation teammate can edit.
+Before delegated implementation, convert the decision into dependency-aware ledger entries. Assign one owner per task and one owner per file. For complex or risky edits, require plan approval before the implementation role session can edit.
 
 ## Implementation
 
-Prefer one final integrator. Agent Teams teammates share the working directory, so avoid having multiple agents edit the same files. Delegate implementation edits only when the lead can isolate ownership by file or module. Use separate worktrees only when the PL explicitly provisions and coordinates them.
+Prefer one final integrator. Role sessions share the working directory, so avoid having multiple agents edit the same files. Delegate implementation edits only when the lead can isolate ownership by file or module. Use separate worktrees only when the PL explicitly provisions and coordinates them.
 
-Run only unblocked tasks in parallel. At every interface handoff, the producing teammate directly messages the consumer with the exact contract and evidence. Update the feature-note execution ledger after each completed wave so work can resume safely after compaction.
+Run only unblocked tasks in parallel. At every interface handoff, the producing role session directly messages the consumer with the exact contract and evidence. Update the feature-note execution ledger after each completed wave so work can resume safely after compaction.
 
-**Change-shape gate.** After each delegated wave, before accepting any deliverable, run `git status --porcelain` (it covers modified and untracked files) and compare every path against the union of the file/module ownership lists on that wave's tasks, plus `protectedPaths` from `.claude/pl.local.md` when present. A path outside every list is an ownership violation regardless of whether the change looks correct: do not accept the wave, ask the owning teammate to revert the path or justify it, and record the incident in the execution ledger. The one-owner-per-file rule above is only as real as this check — without it a violation surfaces later as a conflicting edit or not at all.
+**Change-shape gate.** After each delegated wave, before accepting any deliverable, run `git status --porcelain` (it covers modified and untracked files) and compare every path against the union of the file/module ownership lists on that wave's ledger entries, plus `protectedPaths` from `.claude/pl.local.md` when present. A path outside every list is an ownership violation regardless of whether the change looks correct: do not accept the wave, ask the owning role session to revert the path or justify it, and record the incident in the execution ledger. The one-owner-per-file rule above is only as real as this check — without it a violation surfaces later as a conflicting edit or not at all.
 
-Do not coordinate role work through panes or ad hoc messages alone: every active teammate must own a visible shared task. After the lead accepts a teammate's final deliverable and no revision, dependency, or re-review remains, ask that teammate to shut down instead of retaining an idle pane.
+Do not coordinate role work through ad hoc messages alone: every active role session must own a visible ledger entry. After the lead accepts a role session's final deliverable and no revision, dependency, or re-review remains, ask that role session to close instead of retaining an idle session.
 
 ## Review Loop
 
@@ -118,7 +118,7 @@ After implementation:
 
 ## Close
 
-Close the feature under `SKILL.md`: confirm no required task is pending or merely stale, read fresh verification output instead of trusting teammate completion claims, bring feature and decision notes up to date, then follow the completion-or-cancellation checklist in `references/team-lifecycle.md` Team Lifecycle (shutdown, force-stop confirmation, lifecycle evidence) and run the memory link/index check. Classify the result under the Standing Completion Contract.
+Close the feature under `SKILL.md`: confirm no required task is pending or merely stale, read fresh verification output instead of trusting role session completion claims, bring feature and decision notes up to date, then follow the completion-or-cancellation checklist in `references/team-lifecycle.md` Team Lifecycle (close, force-close confirmation, lifecycle evidence) and run the memory link/index check. Classify the result under the Standing Completion Contract.
 
 ## Memory Hygiene
 

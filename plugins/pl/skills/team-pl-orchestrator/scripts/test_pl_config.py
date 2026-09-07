@@ -221,7 +221,7 @@ class PlConfigTests(unittest.TestCase):
         # roles.md; lifecycle/triage rules live only in team-lifecycle.md
         # (progressive disclosure — the orchestrator keeps read triggers).
         self.assertNotIn("## Model Policy", orchestrator_text)
-        self.assertNotIn("## Teammate Health and Restart", orchestrator_text)
+        self.assertNotIn("## Role Session Health and Restart", orchestrator_text)
         self.assertIn("`references/team-lifecycle.md`", orchestrator_text)
         # Budget lowered 3000 -> 2600 after Team Lifecycle and Teammate
         # Health moved to references/team-lifecycle.md; keeps the reattach
@@ -233,18 +233,18 @@ class PlConfigTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         for required in (
             "## Team Lifecycle",
-            "## Teammate Health and Restart",
-            "Prefix every shared task subject",
+            "## Role Session Health and Restart",
+            "Prefix every ledger entry subject",
             "Do not reuse a runtime name",
-            "use `TaskStop` by teammate name as a force-stop fallback",
+            "force-close the session through the host's close-session mechanism",
             "rather than looping",
             "do not spawn a replacement in the same session",
             "idle without a delivered result",
-            "Read the teammate's transcript",
-            "deliver the memo with the `SendMessage` tool",
-            "read the matching session file under `~/.claude/projects/`",
+            "Host-specific recovery steps (transcript lookup, session restore) live in SKILL.md Platform Behavior.",
         ):
             self.assertIn(required, lifecycle_text)
+        for host_word in HOST_WORDS:
+            self.assertNotIn(host_word, lifecycle_text, host_word)
         self.assertLess(len(lifecycle_text.split()), 1300)
 
         # Single-source: the full spawn-brief delivery contract lives only in
@@ -336,8 +336,10 @@ class PlConfigTests(unittest.TestCase):
         self.assertNotIn("The memo must contain:", roles_text)
 
         debate_text = (references / "debate-protocol.md").read_text(encoding="utf-8")
-        self.assertIn("SendMessage", debate_text)
-        self.assertIn("idle notification alone", debate_text)
+        self.assertIn("peer-challenge channel", debate_text)
+        self.assertIn("one ledger entry per independent memo", debate_text)
+        for host_word in HOST_WORDS:
+            self.assertNotIn(host_word, debate_text, host_word)
         self.assertIn("idle-without-result triage", debate_text)
         self.assertIn("delivery contract in `references/roles.md`", debate_text)
         self.assertIn("skip Round 2 when synthesis surfaced none", debate_text)
@@ -346,7 +348,7 @@ class PlConfigTests(unittest.TestCase):
         self.assertIn("skipped — no material conflict in synthesis", debate_text)
         self.assertIn("per-gate rubric", debate_text)
         # Reset/close procedures live only in SKILL.md; debate-protocol points.
-        self.assertIn("Teammate Health and Restart", debate_text)
+        self.assertIn("Role Session Health and Restart", debate_text)
         self.assertNotIn("Spawn a fresh teammate", debate_text)
         self.assertNotIn("Each memo must include:", debate_text)
 
