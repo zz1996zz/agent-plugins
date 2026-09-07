@@ -313,8 +313,10 @@ class PlConfigTests(unittest.TestCase):
             roles_text,
         )
         self.assertIn("input-trust boundary", roles_text)
-        self.assertIn("SendMessage", roles_text)
-        self.assertIn("turn-ending text is not delivered", roles_text)
+        self.assertIn("delivery channel for this host", roles_text)
+        self.assertIn("host mapping in SKILL.md Platform Behavior", roles_text)
+        for host_word in HOST_WORDS:
+            self.assertNotIn(host_word, roles_text, host_word)
         self.assertIn("high-fidelity references", roles_text)
         self.assertIn("when the output is itself the check", roles_text)
         self.assertIn("also set `effort: xhigh` in frontmatter", roles_text)
@@ -329,14 +331,9 @@ class PlConfigTests(unittest.TestCase):
             self.assertIn(role, roles_text)
         self.assertIn("## Model Policy", roles_text)
         self.assertIn("Do not pass an invocation-level model override", roles_text)
-        self.assertIn(
-            "User-level subagents rank below managed, `--agents`, and project-level definitions",
-            roles_text,
-        )
-        self.assertIn("plus every `--add-dir` location", roles_text)
+        self.assertIn("treat any same-name collision as unavailable", roles_text)
         self.assertNotIn("Output:", roles_text)
         self.assertNotIn("The memo must contain:", roles_text)
-        self.assertIn("allowlist strips the team coordination tools", roles_text)
 
         debate_text = (references / "debate-protocol.md").read_text(encoding="utf-8")
         self.assertIn("SendMessage", debate_text)
