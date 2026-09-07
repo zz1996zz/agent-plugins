@@ -6,6 +6,9 @@
 # 돌려야 `$pl` 이 역할 세션을 스폰할 수 있다. 이슈가 닫혀 plugin.json 에 agents 필드가 생기면
 # 이 스크립트와 README 의 3단계 설치 안내를 제거한다.
 #
+# 종료 코드: 0 = 전부 설치됨 · 1 = 일부 미설치(비대화형 충돌, 또는 대화형에서 사용자가 덮어쓰기를 거부)
+#            · 2 = 소스 없음 / 알 수 없는 옵션
+#
 #   bash install-codex.sh            # 충돌 시 파일마다 확인(비대화형이면 중단)
 #   bash install-codex.sh --force    # 확인 없이 덮어쓴다
 #   bash install-codex.sh --dry-run  # 무엇을 복사할지만 출력
@@ -18,7 +21,7 @@ for arg in "$@"; do
   case "$arg" in
     --force) FORCE=1 ;;
     --dry-run) DRY=1 ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "알 수 없는 옵션: $arg" >&2; exit 2 ;;
   esac
 done

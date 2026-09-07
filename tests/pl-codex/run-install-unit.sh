@@ -46,5 +46,10 @@ check "--dry-run exits 0" $rc
 [ ! -e "$CODEX_HOME/agents" ]; check "--dry-run writes nothing" $?
 printf '%s' "$out" | grep -q "team-pl-architect.toml"; check "--dry-run lists targets" $?
 
+# 6. --help → 종료 코드 문서화 포함
+out="$(bash "$INSTALL" --help 2>&1)"; rc=$?
+check "--help exits 0" $rc
+printf '%s' "$out" | grep -q "종료 코드"; check "--help includes exit-code documentation" $?
+
 echo "FAIL=$fails"
 [ "$fails" -eq 0 ]
