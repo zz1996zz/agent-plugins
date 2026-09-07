@@ -4,6 +4,8 @@
 # 훅의 판정 로직을 손대면 커밋 전에 돌린다.
 #
 #   bash tests/pl-guard/run-unit.sh [hook-path]
+#
+# 페이로드 형식: name @@@ command @@@ expected [@@@ shape: claude(기본)|codex]
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="${1:-$HERE/../../plugins/pl/hooks/guard.sh}"
@@ -48,6 +50,11 @@ a14-status              @@@ git status --porcelain                              
 a15-grep-force          @@@ grep -rn -- --force docs/                                 @@@ ALLOW
 a16-no-git              @@@ ls -la                                                    @@@ ALLOW
 a17-compound-safe       @@@ git add -A && git commit -m msg && git push -u origin x    @@@ ALLOW
+c01-codex-push-force    @@@ git push --force origin main                              @@@ DENY  @@@ codex
+c02-codex-reset-hard    @@@ git reset --hard HEAD~1                                   @@@ DENY  @@@ codex
+c03-codex-no-verify     @@@ git commit --no-verify -m msg                             @@@ DENY  @@@ codex
+c04-codex-push-plain    @@@ git push origin feature                                   @@@ ALLOW @@@ codex
+c05-codex-msg-force     @@@ git commit -m "force push 금지 문서화"                      @@@ ALLOW @@@ codex
 '
 
 OUT="$(mktemp)"
@@ -59,7 +66,14 @@ printf '%s\n' "$CASES" | while IFS= read -r line; do
   [ -n "$name" ] || continue
   cmd="$( printf '%s' "$line" | awk -F'@@@' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
   exp="$( printf '%s' "$line" | awk -F'@@@' '{print $3}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-  payload="$(jq -n --arg c "$cmd" '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c}}')"
+  shape="$(printf '%s' "$line" | awk -F'@@@' '{print $4}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  if [ "$shape" = "codex" ]; then
+    # Codex CLI PreToolUse 페이로드 (learn.chatgpt.com/docs/hooks, 2026-09). tool_input.command 는
+    # Claude 와 같은 키다 — 추가 필드가 판정을 흔들지 않는지 고정한다.
+    payload="$(jq -n --arg c "$cmd" '{session_id:"s1",transcript_path:null,cwd:"/tmp/x",hook_event_name:"PreToolUse",permission_mode:"default",turn_id:"t1",tool_name:"Bash",tool_use_id:"u1",tool_input:{command:$c},model:"gpt-5"}')"
+  else
+    payload="$(jq -n --arg c "$cmd" '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c}}')"
+  fi
   out="$(printf '%s' "$payload" | bash "$HOOK" 2>&1)"
   case "$out" in *'"deny"'*) act=DENY ;; *) act=ALLOW ;; esac
   [ "$act" = "$exp" ] && res=PASS || res=FAIL
