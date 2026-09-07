@@ -12,6 +12,7 @@ Sample across multiple repo types instead of copying one popular pattern:
 - Real project showcases: repos that combine `.claude/agents`, `.claude/skills`, hooks, settings, and workflow docs.
 - Multi-agent orchestration repos: planners, dependency graphs, parallel waves, review gates, and memory systems.
 - Cross-tool skill repos: projects that keep Agent Skills portable across Claude Code, Codex, Cursor, Gemini, and GitHub Copilot.
+- Codex CLI multi-agent setups: `.codex/agents/*.toml` role definitions, `.agents/skills/` skill layouts, and `hooks.json` guards — pl now runs on Codex too, so compare against both ecosystems.
 
 ## Minimum Review Standard
 

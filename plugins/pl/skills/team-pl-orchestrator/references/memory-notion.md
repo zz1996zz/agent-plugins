@@ -1,10 +1,17 @@
 # Memory Adapter: Notion (official MCP)
 
-Use this adapter only when the user config says `backend: notion`. Notion is the source of truth — do not silently fall back to local files. All calls go through the official Notion MCP server (`notion`, `https://mcp.notion.com/mcp`); the plugin does not bundle it — onboarding step 1 connects it. Load its tools with ToolSearch when needed. `<root-page>` is the `notion.rootPage` value from `pl_user_config.py show`.
+Use this adapter only when the user config says `backend: notion`. Notion is the source of truth — do not silently fall back to local files. All calls go through the official Notion MCP server (`notion`, `https://mcp.notion.com/mcp`); the plugin does not bundle it — onboarding step 1 connects it. Load its tools through the host's tool discovery (SKILL.md Host mapping). `<root-page>` is the `notion.rootPage` value from `pl_user_config.py show`.
 
 ## Onboarding (first run)
 
-1. Check for Notion MCP tools via ToolSearch. If the server is not connected, ask the user to add it once at user scope — `claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp` — then run `/mcp` and complete the Notion OAuth, and retry. If the server exists but is unauthenticated, `/mcp` OAuth only. Verify the connection by calling search.
+1. Check for Notion MCP tools. If the server is not connected, ask the user to add it once at user scope and authenticate, then retry:
+
+   | Host | Add the server | Authenticate |
+   |---|---|---|
+   | Claude Code | `claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp` | run `/mcp` and complete the Notion OAuth |
+   | Codex CLI | `codex mcp add notion --url https://mcp.notion.com/mcp` | `codex mcp login notion` |
+
+   If the server exists but is unauthenticated, only the authenticate step is needed. Verify the connection by calling search.
 2. Ask the user for the root page URL (they create or pick one page in the shared workspace).
 3. Fetch the root page to confirm access.
 4. Create two databases under the root page (skip any that already exist):

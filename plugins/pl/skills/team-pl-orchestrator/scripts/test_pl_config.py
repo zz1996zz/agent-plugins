@@ -86,6 +86,13 @@ def parse_tools(value: str) -> set[str]:
     return {item.strip() for item in value.split(",") if item.strip()}
 
 
+def read_body(path: Path) -> str:
+    # Frontmatter `tools:` legitimately names host tool APIs (SendMessage,
+    # TaskList, ...); host-neutrality checks apply only to the body.
+    _, _, body = path.read_text(encoding="utf-8").split("---", 2)
+    return body
+
+
 def read_agent_name(path: Path) -> str | None:
     text = path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
     frontmatter = text.split("---", 2)
@@ -122,10 +129,9 @@ class PlConfigTests(unittest.TestCase):
             self.assertLess(len(frontmatter.get("description", "")), 160, role)
 
             role_text = role_files[role].read_text(encoding="utf-8")
-            # Frontmatter `tools:` legitimately names host tool APIs (SendMessage,
-            # TaskList, ...) and is excluded from the host-neutral prose check below;
-            # build_codex_agents.py never copies it into the generated body either.
-            _, _, role_body = role_text.split("---", 2)
+            # build_codex_agents.py never copies frontmatter into the generated
+            # body either, so the host-neutral prose check below uses the body.
+            role_body = read_body(role_files[role])
             self.assertIn("You are a role session spawned by the PL lead", role_text, role)
             for status in ("Status: DONE", "Status: NEEDS_DECISION", "Status: BLOCKED"):
                 self.assertIn(status, role_text, role)
@@ -176,6 +182,26 @@ class PlConfigTests(unittest.TestCase):
         duplicates = {name: paths for name, paths in names.items() if len(paths) > 1}
         self.assertFalse(duplicates, duplicates)
 
+    def test_references_and_roles_are_host_neutral(self) -> None:
+        # 스펙 4.1: 호스트 이름·도구 이름은 SKILL.md Platform Behavior 에만 산다.
+        # 예외: 사용자가 직접 치는 설정 명령(memory-notion 온보딩), 시스템 개선 전용 문서.
+        exempt = {"memory-notion.md", "external-benchmarking.md"}
+        files = [p for p in (SKILL_DIR / "references").glob("*.md") if p.name not in exempt]
+        for path in files:
+            text = path.read_text(encoding="utf-8")
+            for host_word in HOST_WORDS:
+                self.assertNotIn(host_word, text, f"{path.name}: {host_word}")
+        for path in sorted(AGENTS_DIR.glob("team-pl-*.md")):
+            # Frontmatter `tools:` legitimately names host tool APIs; only the
+            # post-frontmatter body is checked here.
+            body = read_body(path)
+            for host_word in HOST_WORDS:
+                self.assertNotIn(host_word, body, f"{path.name}: {host_word}")
+        notion = (SKILL_DIR / "references" / "memory-notion.md").read_text(encoding="utf-8")
+        self.assertIn("codex mcp add notion --url https://mcp.notion.com/mcp", notion)
+        self.assertIn("claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp", notion)
+        self.assertNotIn("ToolSearch", notion)
+
     def test_skill_entrypoints_and_references(self) -> None:
         pl_frontmatter = read_frontmatter(PL_SKILL)
         orchestrator = SKILL_DIR / "SKILL.md"
@@ -197,7 +223,10 @@ class PlConfigTests(unittest.TestCase):
         self.assertIn("$ARGUMENTS", pl_text)
         self.assertNotIn("`$ARGUMENTS`", pl_text)
         self.assertIn("\n$ARGUMENTS\n", pl_text)
-        self.assertLess(len(pl_text.splitlines()), 30)
+        self.assertIn("on Codex the request is the remainder of the user message after `$pl`", pl_text)
+        self.assertIn("read `../team-pl-orchestrator/SKILL.md` relative to this file", pl_text)
+        self.assertIn("invoke `pl:team-pl-orchestrator` with the `Skill` tool", pl_text)
+        self.assertLess(len(pl_text.splitlines()), 40)
         self.assertLess(len(pl_frontmatter.get("description", "")), 1536)
         self.assertLess(len(orchestrator_frontmatter.get("description", "")), 1536)
         for required in (
