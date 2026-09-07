@@ -244,9 +244,18 @@ class PlConfigTests(unittest.TestCase):
         self.assertNotIn("## Model Policy", orchestrator_text)
         self.assertNotIn("## Role Session Health and Restart", orchestrator_text)
         self.assertIn("`references/team-lifecycle.md`", orchestrator_text)
-        # Budget 3000: Platform Behavior now carries the two-host mapping table
-        # plus a Codex CLI subsection, and that vocabulary lives nowhere else.
-        self.assertLess(len(orchestrator_text.split()), 3000)
+        # Budget 3200: Platform Behavior carries the two-host mapping table plus
+        # both host subsections (Claude Code and Codex CLI), and that vocabulary
+        # lives nowhere else in the plugin.
+        self.assertLess(len(orchestrator_text.split()), 3200)
+        # 공유 태스크 목록은 Claude 전용이다. 그 어휘가 Claude 절 밖으로 새면
+        # Codex 호스트에서 존재하지 않는 것을 지시하게 된다.
+        before_claude, _, rest = orchestrator_text.partition(
+            "### Claude Code (Agent Teams)"
+        )
+        _, _, from_codex = rest.partition("### Codex CLI (subagents)")
+        self.assertNotIn("shared task", before_claude)
+        self.assertNotIn("shared task", from_codex)
 
         lifecycle_text = (
             SKILL_DIR / "references" / "team-lifecycle.md"

@@ -1,6 +1,6 @@
 # Memory Adapter: Obsidian Vault
 
-Use this adapter only when the user config says `backend: obsidian`. `<vault-root>` below is the `obsidian.root` value from `pl_user_config.py show`. `<skill-dir>` is `<skill-dir>`.
+Use this adapter only when the user config says `backend: obsidian`. `<vault-root>` below is the `obsidian.root` value from `pl_user_config.py show`. `<skill-dir>` and `<data-dir>` are defined in SKILL.md Platform Behavior (Host mapping).
 
 ## Onboarding (first run)
 
