@@ -15,6 +15,7 @@ SKILL_DIR = SCRIPT_DIR.parent
 CLAUDE_DIR = SKILL_DIR.parents[1]
 AGENTS_DIR = CLAUDE_DIR / "agents"
 PL_SKILL = CLAUDE_DIR / "skills" / "pl" / "SKILL.md"
+CODEX_MANIFEST = CLAUDE_DIR / ".codex-plugin" / "plugin.json"
 ZSHRC = Path.home() / ".zshrc"
 
 # Verified 2026-07-14 (Claude Code 2.1.208): a role `tools` allowlist
@@ -358,6 +359,36 @@ class PlConfigTests(unittest.TestCase):
         if user_settings.exists():
             settings = json.loads(user_settings.read_text(encoding="utf-8"))
             self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", settings.get("env") or {})
+
+    def test_codex_manifests_and_skill_metadata(self) -> None:
+        claude_manifest = json.loads(
+            (CLAUDE_DIR / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        codex_manifest = json.loads(CODEX_MANIFEST.read_text(encoding="utf-8"))
+        # 설치 캐시가 버전 키다. 두 호스트의 버전이 갈리면 한쪽 사용자에게만 변경이 전파된다.
+        self.assertEqual(claude_manifest["version"], codex_manifest["version"])
+        self.assertEqual("pl", codex_manifest["name"])
+        self.assertEqual("./skills/", codex_manifest["skills"])
+        self.assertEqual("./hooks/hooks.json", codex_manifest["hooks"])
+        # Notion MCP 는 번들하지 않는다 (README 정책).
+        self.assertNotIn("mcpServers", codex_manifest)
+
+        marketplace = json.loads(
+            (CLAUDE_DIR.parents[1] / ".agents" / "plugins" / "marketplace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual("zz1996zz", marketplace["name"])
+        entry = next(p for p in marketplace["plugins"] if p["name"] == "pl")
+        self.assertEqual({"source": "local", "path": "./plugins/pl"}, entry["source"])
+
+        # Claude 의 disable-model-invocation: true 에 대응하는 Codex 메타데이터.
+        pl_meta = (CLAUDE_DIR / "skills" / "pl" / "agents" / "openai.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("allow_implicit_invocation: false", pl_meta)
+        orch_meta = (SKILL_DIR / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        self.assertIn("allow_implicit_invocation: true", orch_meta)
 
     def test_python_helpers_compile(self) -> None:
         for script in SCRIPT_DIR.glob("*.py"):

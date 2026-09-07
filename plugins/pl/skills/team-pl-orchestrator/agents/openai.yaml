@@ -1,0 +1,5 @@
+interface:
+  display_name: "team-pl-orchestrator"
+  short_description: "pl 오케스트레이터 본체. $pl 이 로드한다"
+policy:
+  allow_implicit_invocation: true
