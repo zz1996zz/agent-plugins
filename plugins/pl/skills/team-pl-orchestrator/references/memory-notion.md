@@ -12,7 +12,7 @@ Use this adapter only when the user config says `backend: notion`. Notion is the
    - **Decisions** — properties: `Title` (title), `Status` (select: `accepted`, `superseded`), `Date` (date), `Owner` (text), `Work` (select), `Feature` (relation → Features), `Supersedes` (relation → Decisions, self).
    If the MCP tools cannot create a property type (e.g. relation), create what is possible, then give the user exact manual steps for the rest and wait.
 5. Create a `Works` child page under the root page (holds one architecture subpage per work namespace).
-6. Save: `python3 "${CLAUDE_PLUGIN_ROOT}/skills/team-pl-orchestrator/scripts/pl_user_config.py" --config "${CLAUDE_PLUGIN_DATA}/config.json" init --backend notion --notion-root-page <url>`
+6. Save: `python3 "<skill-dir>/scripts/pl_user_config.py" --config "<data-dir>/config.json" init --backend notion --notion-root-page <url>`
 
 ## Contract Operations
 
@@ -25,4 +25,4 @@ Use this adapter only when the user config says `backend: notion`. Notion is the
 
 ## Failure handling
 
-If any write fails or the MCP is unreachable mid-work, save the complete intended note content under `${CLAUDE_PLUGIN_DATA}/pending/<date>-<slug>.md` with a frontmatter line `target: notion:<database>/<title>`, report it, and close as `done-with-risks` per SKILL.md. On replay, search the target database for a page with the same title and `Work`; update it if found (upsert), create it otherwise.
+If any write fails or the MCP is unreachable mid-work, save the complete intended note content under `<data-dir>/pending/<date>-<slug>.md` with a frontmatter line `target: notion:<database>/<title>`, report it, and close as `done-with-risks` per SKILL.md. On replay, search the target database for a page with the same title and `Work`; update it if found (upsert), create it otherwise.

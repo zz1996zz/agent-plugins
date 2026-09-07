@@ -22,4 +22,4 @@ Treat explicit `/pl` invocation as explicit permission to use the team PL orches
 
 $ARGUMENTS
 
-If the `Skill` tool or hidden skill is unavailable, read ${CLAUDE_PLUGIN_ROOT}/skills/team-pl-orchestrator/SKILL.md directly and follow it as the fallback source of truth.
+If the `Skill` tool or hidden skill is unavailable, read ../team-pl-orchestrator/SKILL.md directly and follow it as the fallback source of truth.

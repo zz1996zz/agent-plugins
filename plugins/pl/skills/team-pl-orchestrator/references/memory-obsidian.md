@@ -1,11 +1,11 @@
 # Memory Adapter: Obsidian Vault
 
-Use this adapter only when the user config says `backend: obsidian`. `<vault-root>` below is the `obsidian.root` value from `pl_user_config.py show`. `<skill-dir>` is `${CLAUDE_PLUGIN_ROOT}/skills/team-pl-orchestrator`.
+Use this adapter only when the user config says `backend: obsidian`. `<vault-root>` below is the `obsidian.root` value from `pl_user_config.py show`. `<skill-dir>` is `<skill-dir>`.
 
 ## Onboarding (first run)
 
 1. Ask for the vault path (suggest `~/Documents/obsidian/memory`). The path may be a fresh directory.
-2. Save: `python3 "<skill-dir>/scripts/pl_user_config.py" --config "${CLAUDE_PLUGIN_DATA}/config.json" init --backend obsidian --obsidian-root <answer>`
+2. Save: `python3 "<skill-dir>/scripts/pl_user_config.py" --config "<data-dir>/config.json" init --backend obsidian --obsidian-root <answer>`
 3. Verify: `python3 "<skill-dir>/scripts/memory_note.py" --root <vault-root> check` — a fresh vault reports `memory check ok`.
 
 ## Contract Operations
@@ -22,4 +22,4 @@ The helper enforces the status vocabulary, slug rules, index sync, and link vali
 ## Pending replay
 
 When writing a pending file for this backend, set its frontmatter target line to the vault-relative path, e.g. `target: obsidian:work/<work-slug>/features/<file>.md`.
-When replaying `${CLAUDE_PLUGIN_DATA}/pending/*.md` into this backend, write each note to its target path (recorded in the pending file's frontmatter `target:` line) only after comparing content; if the target already exists, merge section-by-section instead of overwriting newer content.
+When replaying `<data-dir>/pending/*.md` into this backend, write each note to its target path (recorded in the pending file's frontmatter `target:` line) only after comparing content; if the target already exists, merge section-by-section instead of overwriting newer content.

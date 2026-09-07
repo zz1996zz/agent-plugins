@@ -201,21 +201,42 @@ class PlConfigTests(unittest.TestCase):
         self.assertLess(len(pl_frontmatter.get("description", "")), 1536)
         self.assertLess(len(orchestrator_frontmatter.get("description", "")), 1536)
         for required in (
-            "Agent Teams teammates",
-            "shared task list",
-            "shut down",
+            "### Host mapping",
+            "### Claude Code (Agent Teams)",
+            "### Codex CLI (subagents)",
+            "| role session |",
+            "| delivery channel |",
+            "| task ledger |",
+            "| peer challenge |",
+            "| close session |",
+            "| skill dir (`<skill-dir>`) |",
+            "| data dir (`<data-dir>`) |",
+            "| repo-local config |",
             "every enabled session already has one implicit team",
             "`TeamCreate` and `TeamDelete` no longer exist",
-            "there is no separate team cleanup step",
+            "allowlist strips the team coordination tools",
+            "read the matching session file under `~/.claude/projects/`",
+            "`install-codex.sh`",
+            "become required fields of the spawn brief",
             "actual app, CLI, or service path",
             "done-with-risks",
-            "invoked `pl:team-pl-orchestrator` through the `Skill` tool",
-            "Never ask a teammate to spawn teammates or background subagents",
-            "namespaced `team-pl-*` agent types",
+            "Never ask a role session to spawn further sessions",
             "Do not substitute a dynamic `Workflow`",
             "do not silently downgrade to ordinary subagents",
+            "`.agents/pl.local.md`",
+            "`.claude/pl.local.md`",
         ):
-            self.assertIn(required, pl_text + "\n" + orchestrator_text)
+            self.assertIn(required, pl_text + "\n" + orchestrator_text, required)
+        # 호스트 변수는 hooks.json 밖에서 쓰지 않는다 (스펙 4.2 <skill-dir>/<data-dir>).
+        # 유일한 허용 정의 지점은 SKILL.md 의 Host mapping 표 Claude 열이다.
+        for path in sorted(SKILL_DIR.rglob("*.md")) + [PL_SKILL]:
+            if path == SKILL_DIR / "SKILL.md":
+                continue
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("CLAUDE_PLUGIN_ROOT", text, path)
+            self.assertNotIn("CLAUDE_PLUGIN_DATA", text, path)
+        self.assertEqual(1, orchestrator_text.count("CLAUDE_PLUGIN_ROOT"))
+        self.assertEqual(1, orchestrator_text.count("CLAUDE_PLUGIN_DATA"))
 
         # Single-source layout: catalog/model/spawn policy lives only in
         # roles.md; lifecycle/triage rules live only in team-lifecycle.md
@@ -223,10 +244,9 @@ class PlConfigTests(unittest.TestCase):
         self.assertNotIn("## Model Policy", orchestrator_text)
         self.assertNotIn("## Role Session Health and Restart", orchestrator_text)
         self.assertIn("`references/team-lifecycle.md`", orchestrator_text)
-        # Budget lowered 3000 -> 2600 after Team Lifecycle and Teammate
-        # Health moved to references/team-lifecycle.md; keeps the reattach
-        # window lean and leaves real headroom for future rules.
-        self.assertLess(len(orchestrator_text.split()), 2600)
+        # Budget 3000: Platform Behavior now carries the two-host mapping table
+        # plus a Codex CLI subsection, and that vocabulary lives nowhere else.
+        self.assertLess(len(orchestrator_text.split()), 3000)
 
         lifecycle_text = (
             SKILL_DIR / "references" / "team-lifecycle.md"
