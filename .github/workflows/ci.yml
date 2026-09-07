@@ -20,17 +20,25 @@ jobs:
           import json
           for f in (
               ".claude-plugin/marketplace.json",
+              ".agents/plugins/marketplace.json",
               "plugins/pl/.claude-plugin/plugin.json",
+              "plugins/pl/.codex-plugin/plugin.json",
           ):
               json.load(open(f))
               print(f, "OK")
+          claude = json.load(open("plugins/pl/.claude-plugin/plugin.json"))["version"]
+          codex = json.load(open("plugins/pl/.codex-plugin/plugin.json"))["version"]
+          assert claude == codex, f"plugin.json 버전 불일치: claude={claude} codex={codex}"
+          print("version sync OK", claude)
           EOF
-      - name: 테스트 스위트 3종
+      - name: 테스트 스위트 4종 + Codex 에이전트 동기화
         run: |
           S=plugins/pl/skills/team-pl-orchestrator/scripts
           python3 "$S/test_pl_config.py"
           python3 "$S/test_memory_note.py"
           python3 "$S/test_pl_user_config.py"
+          python3 "$S/test_build_codex_agents.py"
+          python3 "$S/build_codex_agents.py" --check
       - name: E2E 판정 로직 단위 매트릭스
         run: |
           # run-safety.sh(실제 모델 세션)는 토큰이 필요해 CI 밖이지만, 그 판정을 소유하는
@@ -38,6 +46,8 @@ jobs:
           bash tests/pl-e2e/run-unit.sh
       - name: 안전 훅 단위 매트릭스
         run: bash tests/pl-guard/run-unit.sh
+      - name: Codex 설치 스크립트 단위 테스트
+        run: bash tests/pl-codex/run-install-unit.sh
 
   version-guard:
     name: plugins/ 변경 시 버전 범프 강제
