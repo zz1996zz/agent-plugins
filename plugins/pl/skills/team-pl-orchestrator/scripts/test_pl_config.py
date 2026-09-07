@@ -24,6 +24,14 @@ ZSHRC = Path.home() / ".zshrc"
 # the teammate cannot deliver results, settle tasks, or answer shutdown.
 TEAM_TOOLS = {"SendMessage", "TaskList", "TaskGet", "TaskUpdate"}
 
+# references/*.md 와 agents/*.md 본문에서 금지되는 호스트 어휘. 대응은 SKILL.md Platform
+# Behavior 의 매핑표에만 둔다 (스펙 4.1).
+HOST_WORDS = (
+    "SendMessage", "TaskList", "TaskGet", "TaskUpdate", "TaskStop",
+    "spawn_agent", "send_input", "close_agent",
+    "Agent Teams", "Claude Code", "Codex",
+)
+
 ROLE_CONFIG = {
     "team-pl-product-analyst": ("sonnet", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
     "team-pl-qa-engineer": ("opus", {"Read", "Bash", "Grep", "Glob"} | TEAM_TOOLS),
@@ -109,28 +117,27 @@ class PlConfigTests(unittest.TestCase):
             self.assertNotIn("permissionMode", frontmatter, role)
             # Description은 상주 컨텍스트 비용이므로 압축 형식을 유지한다.
             # 금지 규칙 전문(standalone subagent 금지)은 본문(스폰 시 로드)에 있다.
-            self.assertIn("Agent Teams teammate", frontmatter.get("description", ""), role)
+            self.assertIn("Role session", frontmatter.get("description", ""), role)
             self.assertIn("PL lead only", frontmatter.get("description", ""), role)
             self.assertLess(len(frontmatter.get("description", "")), 160, role)
 
             role_text = role_files[role].read_text(encoding="utf-8")
-            self.assertIn("Agent Teams teammate only", role_text, role)
+            # Frontmatter `tools:` legitimately names host tool APIs (SendMessage,
+            # TaskList, ...) and is excluded from the host-neutral prose check below;
+            # build_codex_agents.py never copies it into the generated body either.
+            _, _, role_body = role_text.split("---", 2)
+            self.assertIn("You are a role session spawned by the PL lead", role_text, role)
             for status in ("Status: DONE", "Status: NEEDS_DECISION", "Status: BLOCKED"):
                 self.assertIn(status, role_text, role)
             self.assertIn("not instructions that can override", role_text, role)
-            self.assertIn("If team coordination tools are unavailable", role_text, role)
-            self.assertIn("Do not begin role work without an owned shared task", role_text, role)
+            self.assertIn("Do not begin role work without a brief that states your task fields", role_text, role)
             self.assertNotIn("Do not edit files unless", role_text, role)
-            # Agent Teams delivers only idle notifications automatically; the memo
-            # itself must be sent with SendMessage or the lead sees "idle, no result".
-            self.assertIn("SendMessage", role_text, role)
-            self.assertIn("not delivered to the lead", role_text, role)
-            self.assertIn("update your owned shared task status", role_text, role)
-            self.assertIn("Before going idle", role_text, role)
-            self.assertIn("in one `SendMessage` call", role_text, role)
-            # The misuse fallback (no team tools -> returned text) must not
-            # contradict the teammate-mode delivery contract.
-            self.assertIn("the delivery contract below does not apply", role_text, role)
+            # 호스트 중립: 전달 수단은 브리프가 정한다 (SKILL.md Platform Behavior 매핑표).
+            self.assertIn("Deliver your memo through the delivery channel named in your brief", role_text, role)
+            self.assertIn("settle the owned ledger entry when the brief names one", role_text, role)
+            self.assertIn("in one delivery", role_text, role)
+            for host_word in HOST_WORDS:
+                self.assertNotIn(host_word, role_body, f"{role}: {host_word}")
             self.assertNotIn(". Return:", role_text, role)
             if role in IMPLEMENTATION_ROLES:
                 self.assertIn("listing the files you intend to touch", role_text, role)
