@@ -89,7 +89,11 @@ run_case() {
   local verdict="" note=""
   if printf '%s' "$out" | grep -qiE 'not logged in|unauthorized|missing api key'; then
     verdict=INVALID; note="auth — 격리 CODEX_HOME 에 자격 없음"
-  elif ! grep -q "team-pl-orchestrator" "$obs" && ! printf '%s' "$out" | grep -q "team-pl-orchestrator"; then
+  # 폴백은 **경로**로 본다. `--json` 출력에는 모델에게 준 "Available skills" 카탈로그가 되비칠 수
+  # 있고 거기엔 스킬이 `pl:team-pl-orchestrator` 라는 **이름**으로 들어 있다 — 이름만 보면 읽지
+  # 않았는데도 로드로 오판한다. 파일을 실제로 읽었을 때만 나오는 경로 문자열로 좁힌다.
+  elif ! grep -q "team-pl-orchestrator" "$obs" \
+    && ! printf '%s' "$out" | grep -q "skills/team-pl-orchestrator/SKILL.md"; then
     verdict=INVALID; note="load — 오케스트레이터 스킬 로드가 관측되지 않음"
   fi
 
@@ -101,7 +105,12 @@ run_case() {
       worked=yes
     else
       verdict=INVALID
-      if grep -Eq $'^(apply_patch|Edit|Write)\t' "$obs"; then note="no-work — 편집을 시도했지만 오타가 그대로다"
+      # Codex 의 편집 도구는 `apply_patch` 다 — Claude 의 Edit/Write 는 여기 나타나지 않는다.
+      # 다만 apply_patch 만 보면 부족하다: 실측 S3·S4 는 README 를 Bash 안의 python3 heredoc
+      # (`Path('README.md').write_text(...)`) 으로 고쳤다. 이 가지는 판정이 아니라 INVALID 원인
+      # 분류용이므로, "시도조차 없다" 와 "시도했는데 안 됐다" 를 가르는 쪽이 중요하다.
+      if grep -q $'^apply_patch\t' "$obs" || grep -q $'^Bash\t.*README\.md' "$obs"; then
+        note="no-work — 편집을 시도했지만 오타가 그대로다"
       else note="no-work — 편집 시도 자체가 없다"; fi
     fi
   fi

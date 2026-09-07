@@ -95,6 +95,7 @@ S4는 pl의 안전 훅(`plugins/pl/hooks/guard.sh`)이 실제 세션에서 발�
 | 메모리 격리 | `PL_E2E_DATA_DIR=$CODEX_HOME/plugins/data/pl` 에 throwaway vault 설정 |
 | 훅 | `$CODEX_HOME/hooks.json` 에 `observe.sh`; `-c features.hooks=true --dangerously-bypass-hook-trust` |
 | 인증 | 격리 홈에는 자격이 없다. `CODEX_API_KEY` 또는 `PL_E2E_CODEX_AUTH=copy`(사용자 `auth.json` 복사) |
+| 네트워크 | **겹이 없다.** `-s danger-full-access` 는 파일시스템만이 아니라 네트워크 제한도 함께 해제한다. push 가 밖으로 나가지 않는 것은 픽스처 origin 이 로컬 bare 경로이기 때문이고, 샌드박스가 막아 주는 것이 아니다 |
 
 | 변수 | 기본 | 용도 |
 |---|---|---|
@@ -123,4 +124,4 @@ S4는 pl의 안전 훅(`plugins/pl/hooks/guard.sh`)이 실제 세션에서 발�
 - Codex: `codex exec` 의 플러그인 스킬 로드는 공식 문서에 명시 문장이 없다(2026-09 조사). 위 "실측" 절의 방식이 러너에 반영돼 있으며, 로드가 깨지면 `INVALID(load)` 로 떨어진다.
 - Codex: 격리는 `CODEX_HOME` 까지다. 스킬 루트에는 사용자의 `~/.agents/skills` 가 **항상 함께 올라온다** — 끌 수 있는 플래그가 없다. 읽기 전용 유입이지만, 그쪽 스킬이 세션 행동을 바꿀 여지는 남는다.
 - Codex: `run-safety.sh` 와 달리 설치본 플러그인을 끄는 겹이 없다. 임시 `CODEX_HOME` 이 그 역할을 대신하지만, `~/.agents/skills` 는 위와 같이 예외다.
-- Codex: `-s danger-full-access` 로 도는 만큼 세션은 원리상 사용자 권한으로 어디든 쓸 수 있다 — 픽스처를 감싼 실제 레포까지 포함한다. Claude 러너도 같은 노출을 갖는다("스스로 자제하는가"를 재려면 피할 수 없다). 세션 안의 제동은 pl 의 `guard.sh` 뿐이고, 그게 시험 대상이다. 신뢰하지 않는 프롬프트로 이 러너를 돌리지 않는다.
+- Codex: `-s danger-full-access` 로 도는 만큼 세션은 원리상 사용자 권한으로 어디든 쓸 수 있다 — 픽스처를 감싼 실제 레포까지 포함한다. **네트워크도 마찬가지로 무제한이다** (실측: 같은 프롬프트를 `-c sandbox_mode=…` 로 렌더하면 `read-only`·`workspace-write` 는 `Network access is restricted` + `<file_system type="restricted">`, `danger-full-access` 는 `Network access is enabled` + `<file_system type="unrestricted" />` 다). 즉 "네트워크 없음" 봉쇄는 픽스처 origin 이 로컬 bare 경로라는 점과 요청이 오타 한 줄이라는 점에 의존하며, 샌드박스가 보장하지 않는다. Claude 러너도 같은 노출을 갖는다("스스로 자제하는가"를 재려면 피할 수 없다). 세션 안의 제동은 pl 의 `guard.sh` 뿐이고, 그게 시험 대상이다. 신뢰하지 않는 프롬프트나 원격 origin 을 가진 픽스처로 이 러너를 돌리지 않는다.
