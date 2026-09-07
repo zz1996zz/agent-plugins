@@ -67,6 +67,24 @@ class BuildCodexAgentsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bca.render_toml(fm, body)
 
+    def test_toml_multiline_escapes_runs_of_more_than_three_quotes(self) -> None:
+        # Include a lone ''' so the value takes the '"""'-wrapped fallback branch,
+        # where a run of 4+ double quotes must still come out escaped correctly.
+        body = "a ''' b \"\"\"\" c"
+        result = bca._toml_multiline(body)
+        data = tomllib.loads("x = " + result)
+        self.assertEqual(body, data["x"])
+
+    def test_render_handles_body_with_triple_and_quad_quotes(self) -> None:
+        sample_with_quad_quotes = SAMPLE.replace(
+            "Second paragraph with a '''triple quote''' inside.\n",
+            'Second paragraph with a \'\'\'triple quote\'\'\' and """" four quotes inside.\n',
+        )
+        fm, body = bca.parse_agent(sample_with_quad_quotes)
+        toml_text = bca.render_toml(fm, body)
+        data = tomllib.loads(toml_text)
+        self.assertEqual(body, data["developer_instructions"])
+
     def test_build_writes_one_toml_per_role_and_check_detects_drift(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)

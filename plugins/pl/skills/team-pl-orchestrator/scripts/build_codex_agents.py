@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import tomllib
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -57,7 +58,7 @@ def _toml_multiline(value: str) -> str:
     # Literal multi-line strings need no escaping unless the body contains '''.
     if "'''" not in value:
         return f"'''\n{value}'''"
-    escaped = value.replace("\\", "\\\\").replace('"""', '\\"""')
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"""\n{escaped}"""'
 
 
@@ -85,7 +86,14 @@ def build(agents_dir: Path, out_dir: Path, check: bool) -> int:
     if not sources:
         print(f"no agent sources under {agents_dir}", file=sys.stderr)
         return 2
-    expected = {f"{src.stem}.toml": render_toml(*parse_agent(src.read_text(encoding="utf-8"))) for src in sources}
+    expected: dict[str, str] = {}
+    for src in sources:
+        text = render_toml(*parse_agent(src.read_text(encoding="utf-8")))
+        try:
+            tomllib.loads(text)
+        except tomllib.TOMLDecodeError as exc:
+            raise ValueError(f"{src.name}: generated invalid TOML: {exc}") from exc
+        expected[f"{src.stem}.toml"] = text
     if check:
         drift = [
             name
