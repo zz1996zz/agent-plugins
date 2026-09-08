@@ -147,6 +147,8 @@ Out:
 - 
 ```
 
+In the feature note's `## PL Decisions` section, refer to a decision note only through the `Related decisions:` wikilink at the top of the feature note; never spell a decision note's filename in prose — a filename written twice will diverge.
+
 ## Decision Note
 
 Path: `work/<work-slug>/decisions/YYYY-MM-DD-decision-slug.md`

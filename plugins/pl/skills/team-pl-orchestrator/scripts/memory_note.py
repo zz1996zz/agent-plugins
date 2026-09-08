@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import string
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -48,11 +49,19 @@ def memory_lock(root: Path):
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+# Every ASCII punctuation character except `-` and `.` folds into a hyphen, so
+# filesystem/URL/Markdown-hostile characters (commas, parens, slashes, quotes,
+# ...) never survive into a slug. Non-ASCII characters (e.g. Korean) are left
+# untouched.
+_PUNCTUATION_TO_FOLD = "".join(c for c in string.punctuation if c not in "-.")
+_PUNCTUATION_PATTERN = re.compile(f"[{re.escape(_PUNCTUATION_TO_FOLD)}]+")
+
+
 def slugify(value: str) -> str:
     original = value
     value = value.strip().lower()
     value = re.sub(r"[\s_]+", "-", value)
-    value = re.sub(r"[\\/:\*\?\"<>\|\#\^\[\]]+", "-", value)
+    value = _PUNCTUATION_PATTERN.sub("-", value)
     value = re.sub(r"-+", "-", value).strip("-. ")
     if not value:
         digest = hashlib.sha1(original.encode("utf-8")).hexdigest()[:8]

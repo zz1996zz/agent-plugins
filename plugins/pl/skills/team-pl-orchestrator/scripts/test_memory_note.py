@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +12,8 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).with_name("memory_note.py")
+sys.path.insert(0, str(SCRIPT.parent))
+from memory_note import slugify  # noqa: E402
 
 
 class MemoryNoteTests(unittest.TestCase):
@@ -330,6 +333,19 @@ class MemoryNoteTests(unittest.TestCase):
         )
         self.assertNotEqual(feature, other)
         self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+    def test_slugify_folds_ascii_punctuation_but_keeps_korean(self) -> None:
+        # Commas, parentheses and slashes must fold to hyphens like every other
+        # ASCII punctuation mark, while Korean letters pass through untouched.
+        title = "결제 취소, 부분(partial) 지원 / v2"
+        slug = slugify(title)
+        self.assertEqual("결제-취소-부분-partial-지원-v2", slug)
+        for char in (",", "(", ")", "/"):
+            self.assertNotIn(char, slug)
+        self.assertIn("결제", slug)
+        self.assertIn("취소", slug)
+        self.assertIn("부분", slug)
+        self.assertIn("지원", slug)
 
     def test_normalizes_mixed_legacy_index(self) -> None:
         work_dir = self.root / "work" / "legacy"
