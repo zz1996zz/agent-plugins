@@ -276,12 +276,15 @@ class PlConfigTests(unittest.TestCase):
         self.assertNotIn("## Model Policy", orchestrator_text)
         self.assertNotIn("## Role Session Health and Restart", orchestrator_text)
         self.assertIn("`references/team-lifecycle.md`", orchestrator_text)
-        # Budget 3600: Platform Behavior carries the two-host mapping table plus
+        # Budget 4000: Platform Behavior carries the two-host mapping table plus
         # both host subsections (Claude Code and Codex CLI), and that vocabulary
-        # lives nowhere else in the plugin. Raised from 3200 on 2026-09-08 for the
-        # real-usage defect fixes (spawn evidence, spawn-tool detection, enumerated
-        # solo-pass criteria, headless tool set) — those rules are worth the words.
-        self.assertLess(len(orchestrator_text.split()), 3600)
+        # lives nowhere else in the plugin. Raised from 3200 to 3600 on 2026-09-08
+        # for the real-usage defect fixes (spawn evidence, spawn-tool detection,
+        # enumerated solo-pass criteria, headless tool set). Raised from 3600 to
+        # 4000 on 2026-09-08 (round 3) for the corrected Codex spawn contract
+        # (`agent_type`, TOML pins, sandbox-override note) and the read-only-lane
+        # sandbox-loss warning — those rules are worth the words.
+        self.assertLess(len(orchestrator_text.split()), 4000)
         # 공유 태스크 목록은 Claude 전용이다. 그 어휘가 Claude 절 밖으로 새면
         # Codex 호스트에서 존재하지 않는 것을 지시하게 된다.
         before_claude, _, rest = orchestrator_text.partition(

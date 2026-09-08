@@ -4,7 +4,7 @@
 
 **`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 에이전트 팀이 토론하고, 구현하고, 검증하고, 결정을 기억합니다**
 
-![version](https://img.shields.io/badge/version-0.3.2-blue)
+![version](https://img.shields.io/badge/version-0.3.3-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![memory](https://img.shields.io/badge/memory-Obsidian%20%7C%20Notion-7c3aed)
@@ -58,6 +58,7 @@ flowchart LR
 codex plugin marketplace add zz1996zz/agent-plugins
 codex plugin add pl@zz1996zz
 bash ~/.codex/plugins/cache/zz1996zz/pl/*/install-codex.sh
+# codex 에서 /hooks 로 pl 훅 신뢰 (1회)
 ```
 
 세 번째 줄이 필요한 이유: Codex 플러그인은 skills·hooks는 번들하지만 역할 에이전트 정의는 번들하지 못합니다 ([openai/codex#18988](https://github.com/openai/codex/issues/18988)). `install-codex.sh`가 `agents/codex/*.toml`을 `~/.codex/agents/`에 복사합니다. 이슈가 닫히면 이 단계는 사라집니다. 훅이 발동하지 않으면 `~/.codex/config.toml`에 `[features] hooks = true`를 확인하세요.
@@ -107,7 +108,8 @@ $pl <기능 요청>           (Codex CLI)
 - **커밋·push 자체는 막지 않습니다** — 훅은 사용자가 그걸 요청했는지 알 수 없습니다. 막는 것은 어떤 요청에서도 에이전트가 스스로 택하면 안 되는 지름길입니다.
 - 해제 옵션은 없습니다. 정말 필요하면 프롬프트에 `! <명령>`으로 직접 실행하세요.
 - 인용문 안(커밋 메시지)은 판정에서 제외하고 토큰 단위로 봅니다. `git commit -m "force push 금지"`는 통과합니다.
-- Codex CLI에서도 같은 훅이 같은 판정으로 동작합니다 (페이로드·거부 형식이 동일 — `tests/pl-guard/run-unit.sh`의 Codex 케이스로 고정). 프로젝트 훅과 달리 플러그인 훅은 설치로 신뢰됩니다. 다만 실제 세션에서 차단이 발동한 실측은 아직 없습니다.
+- Codex CLI에서도 같은 훅이 같은 판정으로 동작합니다 (페이로드·거부 형식이 동일 — `tests/pl-guard/run-unit.sh`의 Codex 케이스로 고정). Claude Code 실세션에서 `git restore`·`reset --hard` 차단 실측 (2026-09); Codex 는 훅 로드·환경변수 치환까지 실측, deny 발동 실측은 아직 없음.
+- Codex: 새 플러그인 훅은 처음 한 번 사용자 검토가 필요합니다. `codex`에서 `/hooks`를 열어 pl의 PreToolUse 훅을 신뢰(trust)하기 전까지 가드는 실행되지 않습니다 (`~/.codex/config.toml`의 `[hooks.state."…"]`에 해시가 기록되면 신뢰된 상태입니다). Claude Code는 플러그인 설치 시점에 훅을 함께 승인하므로 별도 단계가 없습니다.
 
 ## 레포 로컬 설정 (선택)
 
@@ -130,7 +132,7 @@ protectedPaths:                    # 팀원은 절대, 리드는 명시 요청 �
 
 | | Claude Code | Codex CLI |
 |---|---|---|
-| 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 (병렬 스폰, 결과 반환) — `codex exec` 에서도 `spawn_agent` 로 스폰됨 (2026-09 실측; 스폰 도구가 목록에 없으면 리드가 멈추고 보고) |
+| 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 — `codex exec` 에서 `spawn_agent`(인자 `agent_type`·`task_name`·`message`·`fork_turns`), `wait_agent`, `list_agents` 로 스폰·대기 (2026-09 실측). `unified_exec` 의 `wait` 는 협업 도구가 아니다 |
 | 팀원 간 직접 반박 (Round 2) | 팀원끼리 직접 메시지 | 리드가 중개 (재질문 → 답변 전달) |
 | 공유 태스크 목록 | 있음 (`TaskList`, 대화형 세션 한정 — 헤드리스는 Execution Ledger) | 없음 — feature 노트 Execution Ledger가 유일한 태스크 상태 |
 | 역할별 허용 도구 | 에이전트 `tools` 목록 | 없음 — `sandbox_mode`(read-only / workspace-write)로 근사, 나머지는 역할 본문의 산문 규칙 |

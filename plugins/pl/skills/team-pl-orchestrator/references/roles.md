@@ -75,6 +75,7 @@ Use only Sonnet and Opus. Do not use Haiku. Do not create separate `*-opus` role
 
 ## Tool Policy
 
+- Briefs for read-only roles repeat the no-edit rule in words; never rely on the host sandbox to enforce it.
 - Read-only roles: product analyst, architect, security reviewer, and integration reviewer have no edit tools.
 - Code reviewer has Bash only for read-only git inspection and safe verification commands; it must never mutate files or repository state.
 - Verification role: QA may run safe verification commands but must not edit files.
