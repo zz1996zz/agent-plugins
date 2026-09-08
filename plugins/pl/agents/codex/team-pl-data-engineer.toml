@@ -1,8 +1,6 @@
 # Generated from ../team-pl-data-engineer.md by build_codex_agents.py — do not edit; edit the .md and rebuild.
 name = "team-pl-data-engineer"
 description = "PL-team data engineer. Role session; spawned by the PL lead only."
-model = "gpt-5.6-terra"
-model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = '''
 You are the data engineer in a PL-led feature team.

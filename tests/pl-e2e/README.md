@@ -122,7 +122,7 @@ S4는 pl의 안전 훅(`plugins/pl/hooks/guard.sh`)이 실제 세션에서 발�
 - `pl-inline`이라는 데이터 디렉터리 이름은 2026-09-03 실행에서 확인됐다(세션이 `~/.claude/plugins/data/pl-inline/config.json`을 읽었다). Claude Code가 이 규칙을 바꾸면 온보딩 회피 설정이 엉뚱한 곳에 심겨 케이스가 `INVALID(no-work)`로 떨어진다. 러너가 끝에 예상 밖 `pl-*` 디렉터리를 감지해 알린다.
 - pl이 요청을 비-routine으로 판정해 팀을 스폰하면 비용이 급증한다. 픽스처 요청은 오타 수정 수준으로 유지한다. Codex 서브에이전트도 마찬가지다.
 - Codex: 러너의 S1–S4 는 설계상 솔로 패스 픽스처다. `codex exec` 의 팀 스폰은 수동 테스트에서 `spawn_agent` 호출로 관측됐지만 (2026-09 실측), 러너는 그 경로를 시험하지 않는다.
-- Codex 자식 세션은 TOML 의 `sandbox_mode` 를 상속하지 않았다 (2026-09 실측, 부모 `-s danger-full-access`); `model`·`model_reasoning_effort`·`developer_instructions` 는 적용됐다.
+- Codex 자식 세션은 TOML 의 `sandbox_mode` 를 상속하지 않았다 (2026-09 실측, 부모 `-s danger-full-access`); `developer_instructions` 와 (설정된 경우) `model_reasoning_effort` 는 적용됐다. TOML은 더 이상 `model` 을 쓰지 않는다 — 자식은 부모 세션의 모델을 그대로 상속한다(0.4.0, 통일 모델 정책).
 - 러너는 `--dangerously-bypass-hook-trust` 로 훅 신뢰 관문을 우회한다. 그래서 신뢰 관문 자체는 이 러너로 시험하지 않는다.
 - Codex: `codex exec` 의 플러그인 스킬 로드는 공식 문서에 명시 문장이 없다(2026-09 조사). 위 "실측" 절의 방식이 러너에 반영돼 있으며, 로드가 깨지면 `INVALID(load)` 로 떨어진다.
 - Codex: 격리는 `CODEX_HOME` 까지다. 스킬 루트에는 사용자의 `~/.agents/skills` 가 **항상 함께 올라온다** — 끌 수 있는 플래그가 없다. 읽기 전용 유입이지만, 그쪽 스킬이 세션 행동을 바꿀 여지는 남는다.

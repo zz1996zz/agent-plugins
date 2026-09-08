@@ -2,7 +2,7 @@
 name: team-pl-code-reviewer
 description: PL-team code reviewer (post-implementation). Role session; spawned by the PL lead only.
 tools: Read, Bash, Grep, Glob, SendMessage, TaskList, TaskGet, TaskUpdate
-model: opus
+model: inherit
 effort: xhigh
 ---
 

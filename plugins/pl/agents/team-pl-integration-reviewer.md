@@ -2,7 +2,7 @@
 name: team-pl-integration-reviewer
 description: PL-team integration reviewer. Role session; spawned by the PL lead only.
 tools: Read, Grep, Glob, SendMessage, TaskList, TaskGet, TaskUpdate
-model: opus
+model: inherit
 effort: xhigh
 ---
 

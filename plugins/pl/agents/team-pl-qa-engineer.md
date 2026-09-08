@@ -2,7 +2,7 @@
 name: team-pl-qa-engineer
 description: PL-team QA engineer. Role session; spawned by the PL lead only.
 tools: Read, Bash, Grep, Glob, SendMessage, TaskList, TaskGet, TaskUpdate
-model: opus
+model: inherit
 effort: xhigh
 ---
 

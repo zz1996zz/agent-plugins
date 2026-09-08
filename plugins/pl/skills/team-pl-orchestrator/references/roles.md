@@ -21,7 +21,7 @@ This file is the single source for role selection, name mapping, model and tool 
 
 ## Lane Discipline
 
-Each role reports only findings inside its own lane, which its agent definition states under "Your lane". A finding that belongs to another role is noise in this role's memo: name the owning role in one line and move on, without expanding into that role's analysis. Lanes are disjoint on purpose. That is what gives overlap its meaning in synthesis — the same finding from two roles is a defect visible from two directions, not a duplicate to collapse — and it keeps a Sonnet role from padding its memo with another role's work.
+Each role reports only findings inside its own lane, which its agent definition states under "Your lane". A finding that belongs to another role is noise in this role's memo: name the owning role in one line and move on, without expanding into that role's analysis. Lanes are disjoint on purpose. That is what gives overlap its meaning in synthesis — the same finding from two roles is a defect visible from two directions, not a duplicate to collapse — and it keeps a role from padding its memo with another role's work.
 
 ## Runtime Name Mapping
 
@@ -51,26 +51,22 @@ On hosts with plugin namespaces the definitions resolve with the plugin prefix (
 
 ## Model Policy
 
-Role agents use the model in their frontmatter:
+Every role session inherits the lead's model (see model / effort in the host mapping in SKILL.md Platform Behavior). Cost and rate limits therefore follow the user's own choice of lead model, not a per-role pin.
 
-`Sonnet` and `Opus` name the two role tiers. The tier is the frontmatter `model` value; hosts that run other model families map each tier to a concrete model in `scripts/build_codex_agents.py` (`MODEL_MAP`) — change the mapping there, never in a role definition.
+- Check roles: `team-pl-architect`, `team-pl-qa-engineer`, `team-pl-integration-reviewer`, `team-pl-code-reviewer`, `team-pl-security-reviewer`. These also set `effort: xhigh` in frontmatter; their finding recall is what the rest of the work depends on.
+- Production roles: `team-pl-product-analyst`, `team-pl-backend-engineer`, `team-pl-frontend-engineer`, `team-pl-data-engineer`. These inherit effort along with the model and leave `effort` unset in frontmatter.
 
-- Sonnet: `team-pl-product-analyst`, `team-pl-backend-engineer`, `team-pl-frontend-engineer`, `team-pl-data-engineer`.
-- Opus: `team-pl-architect`, `team-pl-qa-engineer`, `team-pl-integration-reviewer`, `team-pl-code-reviewer`, `team-pl-security-reviewer`.
+A role runs at the lead's effort when a wrong output is caught downstream, and one step deeper when the output is itself the check. The lead approves plans before complex or risky edits and independently verifies implementation, so backend, frontend, and data inherit effort at no extra cost. The product analyst's memo ends in `Decisions needed` and `Open questions` that the user answers, so a misread requirement surfaces during discovery. Nothing downstream re-derives the rest: the lead verifies against the QA engineer's acceptance criteria rather than rechecking them, and architecture, code, security, and integration findings are the check other work depends on.
 
-A role runs on Sonnet when a wrong output is caught downstream, and on Opus when the output is itself the check. The lead approves plans before complex or risky edits and independently verifies implementation, so backend, frontend, and data run on Sonnet at a fraction of the cost. The product analyst's memo ends in `Decisions needed` and `Open questions` that the user answers, so a misread requirement surfaces during discovery. Nothing downstream re-derives the rest: the lead verifies against the QA engineer's acceptance criteria rather than rechecking them, and architecture, code, security, and integration findings are the check other work depends on.
+Smaller lead models make role sessions follow instructions literally and not silently generalize from one item to another; state each instruction's scope explicitly in their briefs (for example, "apply to every module, not only the first").
 
-Opus roles also set `effort: xhigh` in frontmatter; their finding recall is what the rest of the work depends on. Sonnet roles leave `effort` unset and run at the `high` default — drop a role to `medium` only when cost, not quality, is the binding constraint.
-
-Sonnet-class role sessions follow instructions literally and do not silently generalize from one item to another; state each instruction's scope explicitly in their briefs (for example, "apply to every module, not only the first").
-
-Use only Sonnet and Opus. Do not use Haiku. Do not create separate `*-opus` role variants. Do not pass an invocation-level model override when spawning a named role; invocation overrides and host-level subagent model settings take precedence over role frontmatter.
+Do not create per-model role variants. Only an invocation-level model override breaks inheritance — never pass one when spawning a role; host-level default-model settings do not apply to definitions that name their model explicitly.
 
 ## Spawn Timing
 
 - Discovery/design: start non-trivial feature work with `pl-product`, `pl-architect`, and `pl-qa`.
 - Implementation: backend, frontend, or data engineer only after scope, dependencies, success criteria, and file ownership are set.
-- Review: code reviewer as `pl-review` only after a meaningful diff exists — do not leave the Opus code reviewer idle during discovery and design. Add integration and security reviewers only when the changed surface warrants them.
+- Review: code reviewer as `pl-review` only after a meaningful diff exists — do not leave the code reviewer idle during discovery and design. Add integration and security reviewers only when the changed surface warrants them.
 - Batch spawns per stage: create every role session the current stage needs in ONE message containing multiple spawn calls (discovery/design roles together; implementation roles together; review roles together). One-per-message spawning costs an extra round trip and permission prompt per role. Never pull a later stage's role into an earlier batch just to batch it — the stage boundaries above still gate when each role may start.
 
 ## Tool Policy

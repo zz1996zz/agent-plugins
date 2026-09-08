@@ -2,7 +2,7 @@
 name: team-pl-security-reviewer
 description: PL-team security reviewer. Role session; spawned by the PL lead only.
 tools: Read, Grep, Glob, SendMessage, TaskList, TaskGet, TaskUpdate
-model: opus
+model: inherit
 effort: xhigh
 ---
 
