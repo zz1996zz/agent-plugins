@@ -167,7 +167,7 @@ Codex CLI: `codex plugin marketplace upgrade` → `codex plugin remove pl@zz1996
 
 ## 개발
 
-- 시스템 변경 후 테스트 4종 실행: `skills/team-pl-orchestrator/scripts/`의 `test_pl_config.py` · `test_memory_note.py` · `test_pl_user_config.py` · `test_build_codex_agents.py`
+- 시스템 변경 후 테스트 4종 실행: `skills/team-pl-orchestrator/scripts/`의 `test_pl_config.py` · `test_memory_note.py` · `test_pl_user_config.py` · `test_build_codex_agents.py` (`build_codex_agents.py`와 그 테스트는 `tomllib` 때문에 Python 3.11 이상 — 런타임 헬퍼는 3.10으로 충분)
 - 리드 머신 전용 검사를 건너뛰려면: `PL_SKIP_MACHINE_TESTS=1`
 - 프롬프트 문서(`SKILL.md`·`references/`·`agents/`)나 `hooks/guard.sh`를 고쳤으면 레포 루트의 행동 테스트도 돌립니다: `tests/pl-guard/run-unit.sh`(훅 판정, 토큰 불필요) · `tests/pl-e2e/run-unit.sh`(E2E 판정 로직, 토큰 불필요) · `tests/pl-e2e/run-safety.sh`(실제 세션, 토큰 소모). 자세한 것은 [`tests/pl-e2e/README.md`](../../tests/pl-e2e/README.md)
 - Codex 지원 관련 테스트: `test_build_codex_agents.py` · `build_codex_agents.py --check` (매니페스트·에이전트 변환 검증, 토큰 불필요) · `tests/pl-codex/run-install-unit.sh`(설치 스크립트 단위 테스트, 토큰 불필요) · `tests/pl-e2e/run-safety-codex.sh`(실제 Codex 세션, 토큰 소모)
