@@ -231,8 +231,12 @@ class MemoryNoteTests(unittest.TestCase):
         self.assertIn("feature status mismatch", result.stdout)
 
         feature.write_text(
-            original.replace("status: in-progress", "status: done-with-risks", 1).replace(
-                "- Status: in-progress", "- Status: done-with-risks", 1
+            original.replace("status: in-progress", "status: done-with-risks", 1)
+            .replace("- Status: in-progress", "- Status: done-with-risks", 1)
+            .replace(
+                "- Role sandbox: <inherited from lead session | read-only enforced>",
+                "- Role sandbox: inherited from lead session",
+                1,
             ),
             encoding="utf-8",
         )
@@ -242,20 +246,41 @@ class MemoryNoteTests(unittest.TestCase):
         self.run_helper("feature", "acme", "Placeholder test", "--repo", "/tmp/acme")
         feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
         original = feature.read_text(encoding="utf-8")
+
+        # A fresh in-progress note ships one deliberate placeholder (Role
+        # sandbox); placeholders are enforced only once the note is finished.
+        self.assertIn("- Role sandbox: <inherited from lead session | read-only enforced>", original)
         self.assertIn("0 broken local links", self.run_helper("check").stdout)
 
-        feature.write_text(
-            original.replace(
-                "- Runtime cleanup: host-owned",
-                "- Runtime cleanup: <host-owned | not applicable>",
-                1,
-            ),
-            encoding="utf-8",
+        # Injecting a second placeholder into a still in-progress note is
+        # still fine — the note has not yet claimed to be finished.
+        with_extra_placeholder = original.replace(
+            "- Runtime cleanup: host-owned",
+            "- Runtime cleanup: <host-owned | not applicable>",
+            1,
         )
+        feature.write_text(with_extra_placeholder, encoding="utf-8")
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+        # Once the note claims to be done, every placeholder must be resolved.
+        done_with_placeholders = with_extra_placeholder.replace(
+            "status: in-progress", "status: done", 1
+        ).replace("- Status: in-progress", "- Status: done", 1)
+        feature.write_text(done_with_placeholders, encoding="utf-8")
         result = self.run_helper("check", expect_ok=False)
         self.assertIn("unresolved placeholder", result.stdout)
 
-        feature.write_text(original, encoding="utf-8")
+        # Resolving both placeholders lets the finished note pass again.
+        resolved = done_with_placeholders.replace(
+            "- Runtime cleanup: <host-owned | not applicable>",
+            "- Runtime cleanup: host-owned",
+            1,
+        ).replace(
+            "- Role sandbox: <inherited from lead session | read-only enforced>",
+            "- Role sandbox: inherited from lead session",
+            1,
+        )
+        feature.write_text(resolved, encoding="utf-8")
         self.assertIn("0 broken local links", self.run_helper("check").stdout)
 
     def test_check_accepts_status_reason_after_the_status_token(self) -> None:
@@ -264,19 +289,83 @@ class MemoryNoteTests(unittest.TestCase):
         original = feature.read_text(encoding="utf-8")
 
         feature.write_text(
-            original.replace("status: in-progress", "status: done-with-risks", 1).replace(
+            original.replace("status: in-progress", "status: done-with-risks", 1)
+            .replace(
                 "- Status: in-progress",
                 "- Status: done-with-risks (verification could not run)",
+                1,
+            )
+            .replace(
+                "- Role sandbox: <inherited from lead session | read-only enforced>",
+                "- Role sandbox: inherited from lead session",
                 1,
             ),
             encoding="utf-8",
         )
         self.assertIn("0 broken local links", self.run_helper("check").stdout)
 
+    def test_check_rejects_done_status_with_force_closed_lifecycle(self) -> None:
+        self.run_helper("feature", "acme", "Done gate test", "--repo", "/tmp/acme")
+        feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
+        original = feature.read_text(encoding="utf-8")
+
+        def finish(text: str, status: str) -> str:
+            return (
+                text.replace("status: in-progress", f"status: {status}", 1)
+                .replace("- Status: in-progress", f"- Status: {status}", 1)
+                .replace(
+                    "- Role sandbox: <inherited from lead session | read-only enforced>",
+                    "- Role sandbox: inherited from lead session",
+                    1,
+                )
+            )
+
+        # A code reviewer force-closed without delivering its memo: `done`
+        # must be mechanically rejected even though nothing else is wrong.
+        force_closed_note = finish(original, "done").replace(
+            "- Force-stopped:",
+            "- Force-stopped: code-reviewer was force-closed without delivering a memo",
+            1,
+        )
+        feature.write_text(force_closed_note, encoding="utf-8")
+        result = self.run_helper("check", expect_ok=False)
+        self.assertIn("done status contradicts Team Lifecycle", result.stdout)
+        self.assertIn("force-closed", result.stdout)
+
+        # The identical Team Lifecycle content is fine once the status is
+        # honest about the unresolved review gate instead of claiming `done`.
+        feature.write_text(
+            finish(original, "done-with-risks").replace(
+                "- Force-stopped:",
+                "- Force-stopped: code-reviewer was force-closed without delivering a memo",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+        # A `done` note whose Team Lifecycle carries none of the forbidden
+        # phrases still passes normally.
+        feature.write_text(finish(original, "done"), encoding="utf-8")
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
     def test_check_ignores_placeholders_inside_code(self) -> None:
         self.run_helper("feature", "acme", "Code span test", "--repo", "/tmp/acme")
         feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
-        original = feature.read_text(encoding="utf-8")
+        # Placeholders are enforced only once a note is no longer in-progress;
+        # finish it and resolve its one shipped placeholder (Role sandbox) so
+        # this test isolates the code-quoting behavior it targets.
+        original = (
+            feature.read_text(encoding="utf-8")
+            .replace("status: in-progress", "status: done", 1)
+            .replace("- Status: in-progress", "- Status: done", 1)
+            .replace(
+                "- Role sandbox: <inherited from lead session | read-only enforced>",
+                "- Role sandbox: inherited from lead session",
+                1,
+            )
+        )
+        feature.write_text(original, encoding="utf-8")
 
         quoted_code = original.replace(
             "## Open Questions",
@@ -318,8 +407,12 @@ class MemoryNoteTests(unittest.TestCase):
 
         # Completion must move with the frontmatter, or `check` flags the mismatch.
         feature.write_text(
-            original.replace("status: in-progress", "status: done-with-risks", 1).replace(
-                "- Status: in-progress", "- Status: done-with-risks", 1
+            original.replace("status: in-progress", "status: done-with-risks", 1)
+            .replace("- Status: in-progress", "- Status: done-with-risks", 1)
+            .replace(
+                "- Role sandbox: <inherited from lead session | read-only enforced>",
+                "- Role sandbox: inherited from lead session",
+                1,
             ),
             encoding="utf-8",
         )

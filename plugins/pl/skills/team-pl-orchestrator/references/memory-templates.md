@@ -95,6 +95,7 @@ Out:
 - Force-stopped:
 - Unconfirmed stop:
 - Runtime cleanup: host-owned
+- Role sandbox: <inherited from lead session | read-only enforced>
 
 ## Discussion Summary
 
