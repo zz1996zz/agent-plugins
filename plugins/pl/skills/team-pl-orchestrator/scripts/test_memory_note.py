@@ -93,7 +93,8 @@ class MemoryNoteTests(unittest.TestCase):
         self.assertEqual(1, feature_text.count(decision.name))
         self.assertIn("- Force-stopped:", feature_text)
         self.assertIn("- Unconfirmed stop:", feature_text)
-        self.assertIn("- Runtime cleanup: <host-owned | not applicable>", feature_text)
+        self.assertIn("- Runtime cleanup: host-owned", feature_text)
+        self.assertNotIn("<host-owned | not applicable>", feature_text)
         decision_text = decision.read_text(encoding="utf-8")
         self.assertTrue(decision_text.startswith("---\n"))
         self.assertIn("type: Decision", decision_text)
@@ -214,6 +215,49 @@ class MemoryNoteTests(unittest.TestCase):
         self.assertIn("0 broken local links", self.run_helper("check").stdout)
 
 
+    def test_check_rejects_status_mismatch_between_frontmatter_and_completion(self) -> None:
+        self.run_helper("feature", "acme", "Status sync test", "--repo", "/tmp/acme")
+        feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
+        original = feature.read_text(encoding="utf-8")
+
+        # A fresh note agrees with itself.
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+        feature.write_text(
+            original.replace("- Status: in-progress", "- Status: done-with-risks", 1),
+            encoding="utf-8",
+        )
+        result = self.run_helper("check", expect_ok=False)
+        self.assertIn("feature status mismatch", result.stdout)
+
+        feature.write_text(
+            original.replace("status: in-progress", "status: done-with-risks", 1).replace(
+                "- Status: in-progress", "- Status: done-with-risks", 1
+            ),
+            encoding="utf-8",
+        )
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+    def test_check_rejects_unresolved_choice_placeholder(self) -> None:
+        self.run_helper("feature", "acme", "Placeholder test", "--repo", "/tmp/acme")
+        feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
+        original = feature.read_text(encoding="utf-8")
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+        feature.write_text(
+            original.replace(
+                "- Runtime cleanup: host-owned",
+                "- Runtime cleanup: <host-owned | not applicable>",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        result = self.run_helper("check", expect_ok=False)
+        self.assertIn("unresolved placeholder", result.stdout)
+
+        feature.write_text(original, encoding="utf-8")
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
     def test_check_rejects_nonstandard_feature_status(self) -> None:
         self.run_helper("feature", "acme", "Status vocab test", "--repo", "/tmp/acme")
         feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
@@ -227,8 +271,11 @@ class MemoryNoteTests(unittest.TestCase):
         result = self.run_helper("check", expect_ok=False)
         self.assertIn("nonstandard feature status", result.stdout)
 
+        # Completion must move with the frontmatter, or `check` flags the mismatch.
         feature.write_text(
-            original.replace("status: in-progress", "status: done-with-risks", 1),
+            original.replace("status: in-progress", "status: done-with-risks", 1).replace(
+                "- Status: in-progress", "- Status: done-with-risks", 1
+            ),
             encoding="utf-8",
         )
         self.assertIn("0 broken local links", self.run_helper("check").stdout)

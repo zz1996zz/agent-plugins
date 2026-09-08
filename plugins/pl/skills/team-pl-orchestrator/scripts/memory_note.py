@@ -127,6 +127,12 @@ def yaml_quote(value: str) -> str:
 
 FRONTMATTER_PATTERN = re.compile(r"\A---\r?\n(.*?\n)---\r?\n", re.S)
 
+# `<a | b>` in a note body means the lead never picked one of the two. Templates
+# ship concrete defaults, so a surviving choice placeholder marks an unfinished note.
+CHOICE_PLACEHOLDER_PATTERN = re.compile(r"<[^<>\n]*\|[^<>\n]*>")
+COMPLETION_SECTION_PATTERN = re.compile(r"(?ms)^## Completion\n(.*?)(?=^## |\Z)")
+COMPLETION_STATUS_PATTERN = re.compile(r"(?m)^-?\s*Status:\s*(.+)$")
+
 
 def parse_frontmatter(text: str) -> dict[str, str] | None:
     """Parse the leading YAML frontmatter block into flat scalar fields.
@@ -427,7 +433,7 @@ Out:
 - Shut down:
 - Force-stopped:
 - Unconfirmed stop:
-- Runtime cleanup: <host-owned | not applicable>
+- Runtime cleanup: host-owned
 
 ## Discussion Summary
 
@@ -643,6 +649,9 @@ def check_memory(args: argparse.Namespace) -> int:
             target = local_link_target(note, destination)
             if target is not None and not target.exists():
                 problems.append(f"missing local link: {note} -> {destination}")
+        if "_template" not in note.parts and not note.name.startswith("_"):
+            for placeholder in dict.fromkeys(CHOICE_PLACEHOLDER_PATTERN.findall(text)):
+                problems.append(f"unresolved placeholder: {note} -> {placeholder}")
 
     for decision in (root / "work").glob("*/decisions/*.md"):
         text = decision.read_text(encoding="utf-8")
@@ -672,6 +681,18 @@ def check_memory(args: argparse.Namespace) -> int:
                 f"nonstandard feature status: {feature} -> {status!r}"
                 f" (allowed: {', '.join(FEATURE_STATUSES)})"
             )
+
+        # The frontmatter is the machine-read surface; Completion is what a
+        # reader sees. A note whose two statuses disagree is unfinished.
+        frontmatter_status = (frontmatter or {}).get("status")
+        completion = COMPLETION_SECTION_PATTERN.search(text)
+        if frontmatter_status and completion:
+            body_status = COMPLETION_STATUS_PATTERN.search(completion.group(1))
+            if body_status and body_status.group(1).strip() != frontmatter_status:
+                problems.append(
+                    f"feature status mismatch: {feature} -> frontmatter"
+                    f" {frontmatter_status!r} vs Completion {body_status.group(1).strip()!r}"
+                )
 
     if problems:
         for problem in problems:

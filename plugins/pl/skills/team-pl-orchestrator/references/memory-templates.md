@@ -94,7 +94,7 @@ Out:
 - Shut down:
 - Force-stopped:
 - Unconfirmed stop:
-- Runtime cleanup: <host-owned | not applicable>
+- Runtime cleanup: host-owned
 
 ## Discussion Summary
 

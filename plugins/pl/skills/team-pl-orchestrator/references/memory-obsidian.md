@@ -15,7 +15,7 @@ Use this adapter only when the user config says `backend: obsidian`. `<vault-roo
 - **Create feature note**: `python3 "<skill-dir>/scripts/memory_note.py" --root <vault-root> feature <work-slug> "<feature title>" --repo <repo-path>`
 - **Update ledger**: edit the feature note file directly, replacing whole sections (`## Execution Ledger`, `## PL Decisions`, …) per `memory-templates.md`.
 - **Record decision**: `python3 "<skill-dir>/scripts/memory_note.py" --root <vault-root> decision <work-slug> "<decision title>" --feature features/<feature-file>.md`
-- **Integrity check**: `python3 "<skill-dir>/scripts/memory_note.py" --root <vault-root> check` whenever links or indexes changed.
+- **Integrity check**: `python3 "<skill-dir>/scripts/memory_note.py" --root <vault-root> check` whenever links or indexes changed. If the helper is not found at `<skill-dir>/scripts/`, search the plugin tree for it first; a missing helper may be recorded as an evidence gap only after that search fails.
 
 The helper enforces the status vocabulary, slug rules, index sync, and link validation; prefer it over hand-writing new notes. After changing the helper itself, run `python3 "<skill-dir>/scripts/test_memory_note.py"` first.
 

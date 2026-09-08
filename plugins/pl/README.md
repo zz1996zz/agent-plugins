@@ -130,7 +130,7 @@ protectedPaths:                    # 팀원은 절대, 리드는 명시 요청 �
 
 | | Claude Code | Codex CLI |
 |---|---|---|
-| 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 (병렬 스폰, 결과 반환) — `codex exec` 비대화형에서는 스폰 도구가 노출되지 않아 팀 경로가 성립하지 않음 (대화형 세션 전용, 2026-09 실측) |
+| 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 (병렬 스폰, 결과 반환) — `codex exec` 에서도 `spawn_agent` 로 스폰됨 (2026-09 실측; 스폰 도구가 목록에 없으면 리드가 멈추고 보고) |
 | 팀원 간 직접 반박 (Round 2) | 팀원끼리 직접 메시지 | 리드가 중개 (재질문 → 답변 전달) |
 | 공유 태스크 목록 | 있음 (`TaskList`, 대화형 세션 한정 — 헤드리스는 Execution Ledger) | 없음 — feature 노트 Execution Ledger가 유일한 태스크 상태 |
 | 역할별 허용 도구 | 에이전트 `tools` 목록 | 없음 — `sandbox_mode`(read-only / workspace-write)로 근사, 나머지는 역할 본문의 산문 규칙 |
