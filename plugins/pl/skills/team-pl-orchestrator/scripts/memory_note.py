@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import string
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -48,11 +49,19 @@ def memory_lock(root: Path):
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+# Every ASCII punctuation character except `-` and `.` folds into a hyphen, so
+# filesystem/URL/Markdown-hostile characters (commas, parens, slashes, quotes,
+# ...) never survive into a slug. Non-ASCII characters (e.g. Korean) are left
+# untouched.
+_PUNCTUATION_TO_FOLD = "".join(c for c in string.punctuation if c not in "-.")
+_PUNCTUATION_PATTERN = re.compile(f"[{re.escape(_PUNCTUATION_TO_FOLD)}]+")
+
+
 def slugify(value: str) -> str:
     original = value
     value = value.strip().lower()
     value = re.sub(r"[\s_]+", "-", value)
-    value = re.sub(r"[\\/:\*\?\"<>\|\#\^\[\]]+", "-", value)
+    value = _PUNCTUATION_PATTERN.sub("-", value)
     value = re.sub(r"-+", "-", value).strip("-. ")
     if not value:
         digest = hashlib.sha1(original.encode("utf-8")).hexdigest()[:8]
@@ -117,6 +126,24 @@ def yaml_quote(value: str) -> str:
 
 
 FRONTMATTER_PATTERN = re.compile(r"\A---\r?\n(.*?\n)---\r?\n", re.S)
+
+# `<a | b>` in a note body means the lead never picked one of the two. Templates
+# ship concrete defaults, so a surviving choice placeholder marks an unfinished note.
+CHOICE_PLACEHOLDER_PATTERN = re.compile(r"<[^<>\n]*\|[^<>\n]*>")
+COMPLETION_SECTION_PATTERN = re.compile(r"(?ms)^## Completion\n(.*?)(?=^## |\Z)")
+COMPLETION_STATUS_PATTERN = re.compile(r"(?m)^-?\s*Status:\s*(.+)$")
+# Code is quoted evidence, not note prose: a fenced block or an inline span may
+# legitimately hold `Promise<string | null>` or a shell snippet. Strip both before
+# the placeholder and Completion-status scans so quoted code cannot fail `check`.
+FENCED_CODE_PATTERN = re.compile(
+    r"(?ms)^[ \t]{0,3}(?P<fence>`{3,}|~{3,})[^\n]*\n.*?(?:^[ \t]{0,3}(?P=fence)[ \t]*$|\Z)"
+)
+INLINE_CODE_PATTERN = re.compile(r"`+[^`\n]*`+")
+
+
+def strip_code(text: str) -> str:
+    """Remove fenced code blocks and inline code spans from note text."""
+    return INLINE_CODE_PATTERN.sub("", FENCED_CODE_PATTERN.sub("", text))
 
 
 def parse_frontmatter(text: str) -> dict[str, str] | None:
@@ -418,7 +445,7 @@ Out:
 - Shut down:
 - Force-stopped:
 - Unconfirmed stop:
-- Runtime cleanup: <host-owned | not applicable>
+- Runtime cleanup: host-owned
 
 ## Discussion Summary
 
@@ -634,6 +661,10 @@ def check_memory(args: argparse.Namespace) -> int:
             target = local_link_target(note, destination)
             if target is not None and not target.exists():
                 problems.append(f"missing local link: {note} -> {destination}")
+        if "_template" not in note.parts and not note.name.startswith("_"):
+            prose = strip_code(text)
+            for placeholder in dict.fromkeys(CHOICE_PLACEHOLDER_PATTERN.findall(prose)):
+                problems.append(f"unresolved placeholder: {note} -> {placeholder}")
 
     for decision in (root / "work").glob("*/decisions/*.md"):
         text = decision.read_text(encoding="utf-8")
@@ -663,6 +694,21 @@ def check_memory(args: argparse.Namespace) -> int:
                 f"nonstandard feature status: {feature} -> {status!r}"
                 f" (allowed: {', '.join(FEATURE_STATUSES)})"
             )
+
+        # The frontmatter is the machine-read surface; Completion is what a
+        # reader sees. A note whose two statuses disagree is unfinished.
+        frontmatter_status = (frontmatter or {}).get("status")
+        completion = COMPLETION_SECTION_PATTERN.search(strip_code(text))
+        if frontmatter_status and completion:
+            body_status = COMPLETION_STATUS_PATTERN.search(completion.group(1))
+            # Only the leading token is the status; `done-with-risks (evidence gap …)`
+            # is a legitimate way to write the same status with its reason.
+            body_token = body_status.group(1).split()[0] if body_status else None
+            if body_token and body_token != frontmatter_status:
+                problems.append(
+                    f"feature status mismatch: {feature} -> frontmatter"
+                    f" {frontmatter_status!r} vs Completion {body_token!r}"
+                )
 
     if problems:
         for problem in problems:

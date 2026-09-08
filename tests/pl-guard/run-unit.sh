@@ -6,6 +6,9 @@
 #   bash tests/pl-guard/run-unit.sh [hook-path]
 #
 # 페이로드 형식: name @@@ command @@@ expected [@@@ shape: claude(기본)|codex]
+#
+# a28 은 알려진 한계다: 인용문은 자리표시 토큰 `Q` 로 바뀌므로 `git checkout "."` 는 브랜치명과
+# 구별되지 않는다. `restore` 는 위치 인자 자체를 경로로 보므로 d26·d27 처럼 막힌다.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="${1:-$HERE/../../plugins/pl/hooks/guard.sh}"
@@ -33,6 +36,21 @@ d16-branch-D            @@@ git branch -D feature                               
 d17-branch-delete-force @@@ git branch --delete --force feature                       @@@ DENY
 d18-env-prefix          @@@ GIT_TRACE=1 git push --force                              @@@ DENY
 d19-after-pipe          @@@ echo ok | git reset --hard                                @@@ DENY
+d20-restore-dashdash    @@@ git restore -- README.md                                  @@@ DENY
+d21-restore-source      @@@ git restore --source=HEAD -- README.md                    @@@ DENY
+d22-restore-dot         @@@ git restore .                                             @@@ DENY
+d23-checkout-dashdash   @@@ git checkout -- README.md                                 @@@ DENY
+d24-checkout-head-path  @@@ git checkout HEAD -- README.md                            @@@ DENY
+d25-checkout-dot        @@@ git checkout .                                            @@@ DENY
+d26-restore-quoted      @@@ git restore "README.md"                                    @@@ DENY
+d27-restore-quoted-sq   @@@ git restore 'src/a.py'                                     @@@ DENY
+d28-restore-short-src   @@@ git restore -S -s HEAD a.py                                @@@ DENY
+d29-checkout-tree-path  @@@ git checkout HEAD README.md                                @@@ DENY
+d30-checkout-force      @@@ git checkout -f main                                       @@@ DENY
+d31-checkout-dot-slash  @@@ git checkout ./src                                         @@@ DENY
+d32-checkout-trailing   @@@ git checkout src/                                          @@@ DENY
+d33-switch-force        @@@ git switch -f main                                         @@@ DENY
+d34-switch-discard      @@@ git switch --discard-changes main                           @@@ DENY
 a01-push-plain          @@@ git push origin feature                                   @@@ ALLOW
 a02-push-upstream       @@@ git push -u origin feature                                @@@ ALLOW
 a03-commit-msg-force    @@@ git commit -m "force push 금지 문서화"                      @@@ ALLOW
@@ -50,6 +68,17 @@ a14-status              @@@ git status --porcelain                              
 a15-grep-force          @@@ grep -rn -- --force docs/                                 @@@ ALLOW
 a16-no-git              @@@ ls -la                                                    @@@ ALLOW
 a17-compound-safe       @@@ git add -A && git commit -m msg && git push -u origin x    @@@ ALLOW
+a18-restore-staged      @@@ git restore --staged README.md                            @@@ ALLOW
+a19-checkout-branch     @@@ git checkout main                                         @@@ ALLOW
+a20-checkout-new-branch @@@ git checkout -b feature                                   @@@ ALLOW
+a21-checkout-previous   @@@ git checkout -                                            @@@ ALLOW
+a22-checkout-b-dashdash @@@ git checkout -b feat --                                    @@@ ALLOW
+a23-checkout-b-from     @@@ git checkout -b new main                                   @@@ ALLOW
+a24-switch-branch       @@@ git switch main                                            @@@ ALLOW
+a25-switch-create       @@@ git switch -c new                                          @@@ ALLOW
+a26-checkout-quiet      @@@ git checkout -q main                                       @@@ ALLOW
+a27-checkout-slash-name @@@ git checkout feature/x                                     @@@ ALLOW
+a28-checkout-quoted-dot @@@ git checkout "."                                           @@@ ALLOW
 c01-codex-push-force    @@@ git push --force origin main                              @@@ DENY  @@@ codex
 c02-codex-reset-hard    @@@ git reset --hard HEAD~1                                   @@@ DENY  @@@ codex
 c03-codex-no-verify     @@@ git commit --no-verify -m msg                             @@@ DENY  @@@ codex

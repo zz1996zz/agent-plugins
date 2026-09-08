@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +12,8 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).with_name("memory_note.py")
+sys.path.insert(0, str(SCRIPT.parent))
+from memory_note import slugify  # noqa: E402
 
 
 class MemoryNoteTests(unittest.TestCase):
@@ -90,7 +93,8 @@ class MemoryNoteTests(unittest.TestCase):
         self.assertEqual(1, feature_text.count(decision.name))
         self.assertIn("- Force-stopped:", feature_text)
         self.assertIn("- Unconfirmed stop:", feature_text)
-        self.assertIn("- Runtime cleanup: <host-owned | not applicable>", feature_text)
+        self.assertIn("- Runtime cleanup: host-owned", feature_text)
+        self.assertNotIn("<host-owned | not applicable>", feature_text)
         decision_text = decision.read_text(encoding="utf-8")
         self.assertTrue(decision_text.startswith("---\n"))
         self.assertIn("type: Decision", decision_text)
@@ -211,6 +215,94 @@ class MemoryNoteTests(unittest.TestCase):
         self.assertIn("0 broken local links", self.run_helper("check").stdout)
 
 
+    def test_check_rejects_status_mismatch_between_frontmatter_and_completion(self) -> None:
+        self.run_helper("feature", "acme", "Status sync test", "--repo", "/tmp/acme")
+        feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
+        original = feature.read_text(encoding="utf-8")
+
+        # A fresh note agrees with itself.
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+        feature.write_text(
+            original.replace("- Status: in-progress", "- Status: done-with-risks", 1),
+            encoding="utf-8",
+        )
+        result = self.run_helper("check", expect_ok=False)
+        self.assertIn("feature status mismatch", result.stdout)
+
+        feature.write_text(
+            original.replace("status: in-progress", "status: done-with-risks", 1).replace(
+                "- Status: in-progress", "- Status: done-with-risks", 1
+            ),
+            encoding="utf-8",
+        )
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+    def test_check_rejects_unresolved_choice_placeholder(self) -> None:
+        self.run_helper("feature", "acme", "Placeholder test", "--repo", "/tmp/acme")
+        feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
+        original = feature.read_text(encoding="utf-8")
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+        feature.write_text(
+            original.replace(
+                "- Runtime cleanup: host-owned",
+                "- Runtime cleanup: <host-owned | not applicable>",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        result = self.run_helper("check", expect_ok=False)
+        self.assertIn("unresolved placeholder", result.stdout)
+
+        feature.write_text(original, encoding="utf-8")
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+    def test_check_accepts_status_reason_after_the_status_token(self) -> None:
+        self.run_helper("feature", "acme", "Status reason test", "--repo", "/tmp/acme")
+        feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
+        original = feature.read_text(encoding="utf-8")
+
+        feature.write_text(
+            original.replace("status: in-progress", "status: done-with-risks", 1).replace(
+                "- Status: in-progress",
+                "- Status: done-with-risks (verification could not run)",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+    def test_check_ignores_placeholders_inside_code(self) -> None:
+        self.run_helper("feature", "acme", "Code span test", "--repo", "/tmp/acme")
+        feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
+        original = feature.read_text(encoding="utf-8")
+
+        quoted_code = original.replace(
+            "## Open Questions",
+            "## Notes\n\n"
+            "- The helper returns `Promise<string | null>` on miss.\n\n"
+            "```\n"
+            "- Runtime cleanup: <a | b>\n"
+            "```\n\n"
+            "## Open Questions",
+            1,
+        )
+        feature.write_text(quoted_code, encoding="utf-8")
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+        # The same text outside code is still an unfinished note.
+        feature.write_text(
+            quoted_code.replace(
+                "- Runtime cleanup: host-owned",
+                "- Runtime cleanup: <host-owned | not applicable>",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        result = self.run_helper("check", expect_ok=False)
+        self.assertIn("unresolved placeholder", result.stdout)
+
     def test_check_rejects_nonstandard_feature_status(self) -> None:
         self.run_helper("feature", "acme", "Status vocab test", "--repo", "/tmp/acme")
         feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
@@ -224,8 +316,11 @@ class MemoryNoteTests(unittest.TestCase):
         result = self.run_helper("check", expect_ok=False)
         self.assertIn("nonstandard feature status", result.stdout)
 
+        # Completion must move with the frontmatter, or `check` flags the mismatch.
         feature.write_text(
-            original.replace("status: in-progress", "status: done-with-risks", 1),
+            original.replace("status: in-progress", "status: done-with-risks", 1).replace(
+                "- Status: in-progress", "- Status: done-with-risks", 1
+            ),
             encoding="utf-8",
         )
         self.assertIn("0 broken local links", self.run_helper("check").stdout)
@@ -330,6 +425,19 @@ class MemoryNoteTests(unittest.TestCase):
         )
         self.assertNotEqual(feature, other)
         self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+    def test_slugify_folds_ascii_punctuation_but_keeps_korean(self) -> None:
+        # Commas, parentheses and slashes must fold to hyphens like every other
+        # ASCII punctuation mark, while Korean letters pass through untouched.
+        title = "결제 취소, 부분(partial) 지원 / v2"
+        slug = slugify(title)
+        self.assertEqual("결제-취소-부분-partial-지원-v2", slug)
+        for char in (",", "(", ")", "/"):
+            self.assertNotIn(char, slug)
+        self.assertIn("결제", slug)
+        self.assertIn("취소", slug)
+        self.assertIn("부분", slug)
+        self.assertIn("지원", slug)
 
     def test_normalizes_mixed_legacy_index(self) -> None:
         work_dir = self.root / "work" / "legacy"

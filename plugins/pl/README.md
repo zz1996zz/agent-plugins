@@ -4,7 +4,7 @@
 
 **`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 에이전트 팀이 토론하고, 구현하고, 검증하고, 결정을 기억합니다**
 
-![version](https://img.shields.io/badge/version-0.3.1-blue)
+![version](https://img.shields.io/badge/version-0.3.2-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![memory](https://img.shields.io/badge/memory-Obsidian%20%7C%20Notion-7c3aed)
@@ -99,6 +99,7 @@ $pl <기능 요청>           (Codex CLI)
 |---|---|
 | force-push | `git push --force`, `-f`, `--force-with-lease` |
 | hard reset | `git reset --hard` |
+| 미커밋 변경 폐기 | `git restore <path>`, `git checkout -- <path>`, `git checkout -f`, `git switch -f`/`--discard-changes` |
 | 추적되지 않은 파일 삭제 | `git clean -f`, `-fd` |
 | 검사 우회 | `--no-verify`, `git commit -n`, `git -c core.hooksPath=…` |
 | 보관·브랜치 강제 삭제 | `git stash drop`/`clear`, `git branch -D` |
@@ -129,7 +130,7 @@ protectedPaths:                    # 팀원은 절대, 리드는 명시 요청 �
 
 | | Claude Code | Codex CLI |
 |---|---|---|
-| 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 (병렬 스폰, 결과 반환) — `codex exec` 비대화형에서는 스폰 도구가 노출되지 않아 팀 경로가 성립하지 않음 (대화형 세션 전용, 2026-09 실측) |
+| 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 (병렬 스폰, 결과 반환) — `codex exec` 에서도 `spawn_agent` 로 스폰됨 (2026-09 실측; 스폰 도구가 목록에 없으면 리드가 멈추고 보고) |
 | 팀원 간 직접 반박 (Round 2) | 팀원끼리 직접 메시지 | 리드가 중개 (재질문 → 답변 전달) |
 | 공유 태스크 목록 | 있음 (`TaskList`, 대화형 세션 한정 — 헤드리스는 Execution Ledger) | 없음 — feature 노트 Execution Ledger가 유일한 태스크 상태 |
 | 역할별 허용 도구 | 에이전트 `tools` 목록 | 없음 — `sandbox_mode`(read-only / workspace-write)로 근사, 나머지는 역할 본문의 산문 규칙 |

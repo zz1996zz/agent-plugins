@@ -8,7 +8,7 @@ allowed-tools: Skill(pl:team-pl-orchestrator)
 
 # PL
 
-Gate: if you have not yet loaded the orchestrator skill for this request, do nothing else — no analysis, no clarifying question, no code exploration — load it first, then follow it. On Claude Code invoke `pl:team-pl-orchestrator` with the `Skill` tool; on Codex read `../team-pl-orchestrator/SKILL.md` relative to this file and follow it. Re-load it whenever its instructions are no longer in context (after context compaction or a session restore). This keeps the orchestrator instructions in the skill lifecycle across turns.
+Gate: if you have not yet loaded the orchestrator skill for this request, do nothing else — no analysis, no clarifying question, no code exploration — load it first, then follow it. On Claude Code invoke `pl:team-pl-orchestrator` with the `Skill` tool; on Codex read `../team-pl-orchestrator/SKILL.md` relative to this file and follow it — `<skill-dir>` in the orchestrator means that `team-pl-orchestrator` directory, not this one. Re-load it whenever its instructions are no longer in context (after context compaction or a session restore). This keeps the orchestrator instructions in the skill lifecycle across turns.
 
 Treat explicit invocation (`/pl:pl` or `$pl`) as explicit permission to use the team PL orchestration workflow for the current request, including role-session discussion, implementation, verification, and memory backend updates.
 
