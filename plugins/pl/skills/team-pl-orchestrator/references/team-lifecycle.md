@@ -16,13 +16,12 @@ At the start of every `/pl` request:
 
 During work:
 
-1. Use direct messages for peer questions, challenge, and interface handoffs. Avoid broadcast unless every role session is affected.
-2. Wait for prerequisite analysis or implementation tasks before starting dependent work.
-3. Monitor stuck or stale task states; verify the output, then correct task status or replace the role session when necessary.
-4. Require plan approval before a role session edits for complex or risky implementation work.
-5. Keep the task ledger authoritative. Do not let a role session start role work without an owned ledger entry; reconstruct missing entries before continuing.
-6. After a role session's final deliverable is accepted, close it when no dependency, revision, or re-review remains. Keep an idle role session only for a named follow-up within the same feature.
-7. A role session the host hides after an idle timeout may still be running and addressable. Do not treat a hidden session as closed; confirm through the ledger state or a named message.
+1. Wait for prerequisite analysis or implementation tasks before starting dependent work.
+2. Monitor stuck or stale task states; verify the output, then correct task status or replace the role session when necessary.
+3. Require plan approval before a role session edits for complex or risky implementation work.
+4. Keep the task ledger authoritative. Do not let a role session start role work without an owned ledger entry; reconstruct missing entries before continuing.
+5. After a role session's final deliverable is accepted, close it when no dependency, revision, or re-review remains. Keep an idle role session only for a named follow-up within the same feature.
+6. A role session the host hides after an idle timeout may still be running and addressable. Do not treat a hidden session as closed; confirm through the ledger state or a named message.
 
 At completion or cancellation:
 
@@ -37,11 +36,13 @@ At completion or cancellation:
 
 Treat role sessions as replaceable.
 
+This state exists only on hosts whose role sessions can go idle without returning; on hosts where a session always returns or fails there is nothing to triage (see SKILL.md Platform Behavior).
+
 If a role session goes idle without a delivered result, triage before any correction or replacement:
 
 1. Check its ledger entry. An untouched entry usually means the memo was never delivered through the named channel, not that the role work failed.
 2. Recover undelivered work through the host's transcript or session inspection (SKILL.md Platform Behavior names the steps per host). Treat a recovered memo as the deliverable.
-3. Send one direct message telling the role session to deliver the memo through the named channel and settle its owned ledger entry before going idle.
+3. Send one message through the delivery channel telling the role session to deliver the memo through the named channel and settle its owned ledger entry before going idle.
 4. Escalate below only when the transcript shows no usable work or the role session stays unresponsive after that nudge. Do not conclude role sessions cannot reply or fall back to lead-only passes without completing this triage.
 
 If a role session is stale, confused, in the wrong role, using the wrong model, ignoring constraints, looping, or producing low-quality output:

@@ -64,7 +64,7 @@ Each reference is the single source for its topic; do not restate its rules else
 
 ## Platform Behavior
 
-pl runs on two hosts. Follow your host's subsection and ignore the other. Identify the host by invocation and tools: `/pl:pl` with team tools (`SendMessage`, `TaskList`) is Claude Code; `$pl` with subagent tools (`spawn_agent` or equivalent) is Codex CLI.
+pl runs on two hosts. Follow your host's subsection and ignore the other. Identify the host by the tools present: team tools (`SendMessage`, `TaskList`) mean Claude Code; subagent tools (`spawn_agent` or equivalent) mean Codex CLI. The invocation form (`/pl:pl` vs `$pl`) is a secondary hint — `codex exec` does not expand `$pl`.
 
 Rules common to both hosts:
 
@@ -81,7 +81,7 @@ The left column is the only vocabulary `references/*.md` and the role definition
 
 | Term | Claude Code (Agent Teams) | Codex CLI (subagents) |
 |---|---|---|
-| role session | teammate spawned from the `pl:team-pl-<role>` agent type | subagent spawned from `~/.codex/agents/team-pl-<role>.toml` |
+| role session | teammate spawned from the `pl:team-pl-<role>` agent type | subagent spawned from `${CODEX_HOME:-~/.codex}/agents/team-pl-<role>.toml` |
 | spawn | spawn teammates; batch one stage's roles in one message | spawn subagents in parallel and wait for all results |
 | delivery channel | `SendMessage` to the lead, then `TaskUpdate` on the owned task | the subagent's final response (its return value) |
 | task ledger | the shared `TaskList` | the feature note's Execution Ledger, written by the lead (no host task list) |
@@ -98,7 +98,7 @@ The left column is the only vocabulary `references/*.md` and the role definition
 ### Claude Code (Agent Teams)
 
 - On Claude Code v2.1.178+, every enabled session already has one implicit team, so spawn teammates directly with no setup step. `TeamCreate` and `TeamDelete` no longer exist, requested team names are ignored, and there is no separate team cleanup step; Claude Code owns session team config, so never hand-clean it.
-- Use the word "teammates" in the plan/prompt to trigger Agent Teams, not only "subagents" or "role passes". Spawn only the namespaced `pl:team-pl-*` agent types by name after the collision check in `references/roles.md`. A named definition applies its `tools`, `model`, and prompt body; its `skills` and `mcpServers` frontmatter does not apply.
+- Use the word "teammates" in the plan/prompt to trigger Agent Teams, not only "subagents" or "role passes". Spawn only the namespaced `pl:team-pl-*` agent types by name after the collision check in `references/roles.md`. A named definition applies its `tools`, `model`, and prompt body; its `skills` and `mcpServers` frontmatter does not apply. Before the first spawn, inspect `.claude/agents/` in the current directory, its parents, and every `--add-dir` location for confusable `team-pl-*` definitions. `CLAUDE_CODE_SUBAGENT_MODEL` and invocation-level overrides take precedence over role frontmatter — remove them rather than re-spawning.
 - Every role `tools` allowlist explicitly includes `SendMessage`, `TaskList`, `TaskGet`, `TaskUpdate`: despite official docs, a role allowlist strips the team coordination tools here (verified 2026-07-14, Claude Code 2.1.208), and without them a teammate cannot deliver its memo, settle its task, or answer shutdown.
 - Turn-ending text is not delivered to the lead — only an idle notification is. Say so in every brief and name `SendMessage` as the delivery channel.
 - Teammates inherit the lead's permission mode; the Task `mode` parameter is deprecated and ignored (Claude Code 2.1.212+). In `auto` mode, relayed approval claims are untrusted; keep each role's `tools` allowlist minimal.
@@ -109,13 +109,14 @@ The left column is the only vocabulary `references/*.md` and the role definition
 
 ### Codex CLI (subagents)
 
-- Role definitions are personal agents at `~/.codex/agents/team-pl-<role>.toml`, installed by the plugin's `install-codex.sh` (Codex plugins cannot bundle agents). If one is missing, stop and tell the user to run `install-codex.sh` from the installed plugin directory; never fall back silently to generic subagents or a lead-only pass.
+- Role definitions are personal agents at `${CODEX_HOME:-~/.codex}/agents/team-pl-<role>.toml`, installed by the plugin's `install-codex.sh` (Codex plugins cannot bundle agents). If one is missing, stop and tell the user to run `install-codex.sh` from the installed plugin directory; never fall back silently to generic subagents or a lead-only pass.
 - If subagent tools are unavailable (`agents.enabled = false` or no spawn tool), report it; continue with labeled lead-only role passes only if the user explicitly accepts, and record it in the feature note.
 - There is no host task list. The Round 0 task fields from `references/debate-protocol.md` become required fields of the spawn brief, and the lead writes them into the feature note's Execution Ledger before spawning. That ledger is the only task state.
 - Subagents return one final response; that response is the memo, and the brief must say so. There is no idle-without-result state: a session returns or fails. On failure re-spawn once with the same brief, then record the gap.
 - Subagents cannot message each other. Run Round 2 by re-prompting the challenged session with the challenge text and forwarding the answer; never imply direct peer debate occurred.
 - Subagent depth is one level: state in every brief that the session must not spawn sessions of its own.
 - Sandbox is inherited from the lead's session; role definitions pin `sandbox_mode` (`read-only` for analysis and review roles, `workspace-write` for implementation roles). Allowed-tool lists do not exist here — each role body's prose rules are the boundary.
+- Recovery after a session restore: subagents do not survive it. Reconcile the feature note's Execution Ledger, treat every earlier role session as gone, and re-spawn what is still needed with the same brief.
 
 ## Workflow
 

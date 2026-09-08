@@ -6,7 +6,7 @@
 # 돌려야 `$pl` 이 역할 세션을 스폰할 수 있다. 이슈가 닫혀 plugin.json 에 agents 필드가 생기면
 # 이 스크립트와 README 의 3단계 설치 안내를 제거한다.
 #
-# 종료 코드: 0 = 전부 설치됨 · 1 = 일부 미설치(비대화형 충돌, 또는 대화형에서 사용자가 덮어쓰기를 거부)
+# 종료 코드: 0 = 전부 설치됨 · 1 = 일부 미설치(비대화형 충돌, 대화형에서 사용자가 덮어쓰기를 거부, 또는 복사 실패)
 #            · 2 = 소스 없음 / 알 수 없는 옵션
 #
 #   bash install-codex.sh            # 충돌 시 파일마다 확인(비대화형이면 중단)
@@ -37,7 +37,7 @@ if [ "$DRY" -eq 1 ]; then
 fi
 
 mkdir -p "$DEST"
-copied=0; skipped=0
+copied=0; skipped=0; failed=0
 for f in "${files[@]}"; do
   name="$(basename "$f")"
   target="$DEST/$name"
@@ -53,8 +53,12 @@ for f in "${files[@]}"; do
       fi
     fi
   fi
-  cp "$f" "$target"
-  copied=$((copied+1))
+  if cp "$f" "$target"; then
+    copied=$((copied+1))
+  else
+    echo "복사 실패: $target" >&2
+    failed=$((failed+1))
+  fi
 done
-echo "설치 완료: $copied 개 복사, $skipped 개 건너뜀 → $DEST"
-[ "$skipped" -eq 0 ]
+echo "설치 완료: $copied 개 복사, $skipped 개 건너뜀, $failed 개 실패 → $DEST"
+[ "$skipped" -eq 0 ] && [ "$failed" -eq 0 ]

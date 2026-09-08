@@ -83,7 +83,7 @@ Use only Sonnet and Opus. Do not use Haiku. Do not create separate `*-opus` role
 
 Give each role:
 - Runtime session name and its ledger entry (the shared task ID where the host has one)
-- Feature slug used as the shared task subject prefix
+- Feature slug used as the ledger entry subject prefix
 - The feature request
 - Relevant repo/memory context as high-fidelity references — exact file paths, spec files, test suites, schemas, or mockups — instead of prose summaries of code
 - The exact question for that role

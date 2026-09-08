@@ -100,7 +100,7 @@ def build(agents_dir: Path, out_dir: Path, check: bool) -> int:
             for name, text in expected.items()
             if not (out_dir / name).is_file() or (out_dir / name).read_text(encoding="utf-8") != text
         ]
-        drift += [p.name for p in out_dir.glob("*.toml") if p.name not in expected]
+        drift += [p.name for p in out_dir.glob("team-pl-*.toml") if p.name not in expected]
         if drift:
             print("codex agents out of date: " + ", ".join(sorted(drift)), file=sys.stderr)
             return 1
@@ -109,7 +109,7 @@ def build(agents_dir: Path, out_dir: Path, check: bool) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, text in expected.items():
         (out_dir / name).write_text(text, encoding="utf-8")
-    for stale in out_dir.glob("*.toml"):
+    for stale in out_dir.glob("team-pl-*.toml"):
         if stale.name not in expected:
             stale.unlink()
     print(f"wrote {len(expected)} codex agents to {out_dir}")

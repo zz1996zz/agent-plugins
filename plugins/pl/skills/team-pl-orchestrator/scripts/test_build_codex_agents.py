@@ -116,6 +116,26 @@ class BuildCodexAgentsTests(unittest.TestCase):
             self.assertEqual(1, check_drift.returncode)
             self.assertIn(drifted.name, check_drift.stderr + check_drift.stdout)
 
+    def test_foreign_toml_survives_build_and_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            foreign = out / "other.toml"
+            out.mkdir(parents=True, exist_ok=True)
+            foreign.write_text('name = "not-ours"\n', encoding="utf-8")
+
+            rc = subprocess.run(
+                [sys.executable, str(SCRIPT_DIR / "build_codex_agents.py"), "--out-dir", str(out)],
+                check=False,
+            ).returncode
+            self.assertEqual(0, rc)
+            self.assertTrue(foreign.is_file(), "non-check build must not delete unrelated *.toml files")
+
+            check_rc = subprocess.run(
+                [sys.executable, str(SCRIPT_DIR / "build_codex_agents.py"), "--out-dir", str(out), "--check"],
+                check=False,
+            ).returncode
+            self.assertEqual(0, check_rc, "--check must not flag an unrelated *.toml file as drift")
+
     def test_committed_codex_agents_are_up_to_date(self) -> None:
         rc = subprocess.run(
             [sys.executable, str(SCRIPT_DIR / "build_codex_agents.py"), "--check"], check=False

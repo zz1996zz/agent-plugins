@@ -283,6 +283,7 @@ class PlConfigTests(unittest.TestCase):
             "### Claude Code (Agent Teams)"
         )
         _, _, from_codex = rest.partition("### Codex CLI (subagents)")
+        self.assertTrue(before_claude and from_codex)
         self.assertNotIn("shared task", before_claude)
         self.assertNotIn("shared task", from_codex)
 

@@ -51,5 +51,14 @@ out="$(bash "$INSTALL" --help 2>&1)"; rc=$?
 check "--help exits 0" $rc
 printf '%s' "$out" | grep -q "종료 코드"; check "--help includes exit-code documentation" $?
 
+# 7. 대상 디렉터리가 읽기 전용 → cp 실패가 실패로 보고됨 (exit 1, "실패" 포함)
+export CODEX_HOME="$TMP/home3"
+mkdir -p "$CODEX_HOME/agents"
+chmod 555 "$CODEX_HOME/agents"
+out="$(bash "$INSTALL" </dev/null 2>&1)"; rc=$?
+chmod 755 "$CODEX_HOME/agents"
+[ "$rc" -eq 1 ]; check "read-only dest exits 1 (got $rc)" $?
+printf '%s' "$out" | grep -q "실패"; check "read-only dest reports 실패" $?
+
 echo "FAIL=$fails"
 [ "$fails" -eq 0 ]

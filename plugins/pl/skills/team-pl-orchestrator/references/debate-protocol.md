@@ -88,7 +88,7 @@ The PL lead decides. Do not average opinions. Choose the option that best fits:
 
 Record durable decisions in memory.
 
-Before any edit, run an analyze gate: check that the decisions, the implementation plan, and the shared tasks are consistent — every decision maps to at least one task, every task traces back to the plan, and no accepted decision or required deliverable is missing a task. Resolve mismatches before delegating work; a gap here surfaces later as unowned or contradictory implementation.
+Before any edit, run an analyze gate: check that the decisions, the implementation plan, and the ledger entries are consistent — every decision maps to at least one entry, every entry traces back to the plan, and no accepted decision or required deliverable is missing an entry. Resolve mismatches before delegating work; a gap here surfaces later as unowned or contradictory implementation.
 
 Before delegated implementation, convert the decision into dependency-aware ledger entries. Assign one owner per task and one owner per file. For complex or risky edits, require plan approval before the implementation role session can edit.
 
@@ -96,7 +96,7 @@ Before delegated implementation, convert the decision into dependency-aware ledg
 
 Prefer one final integrator. Role sessions share the working directory, so avoid having multiple agents edit the same files. Delegate implementation edits only when the lead can isolate ownership by file or module. Use separate worktrees only when the PL explicitly provisions and coordinates them.
 
-Run only unblocked tasks in parallel. At every interface handoff, the producing role session directly messages the consumer with the exact contract and evidence. Update the feature-note execution ledger after each completed wave so work can resume safely after compaction.
+Run only unblocked tasks in parallel. At every interface handoff, the producing role session delivers the exact contract and evidence to the consumer through the host's peer-challenge channel (via the lead where sessions cannot message each other). Update the feature-note execution ledger after each completed wave so work can resume safely after compaction.
 
 **Change-shape gate.** After each delegated wave, before accepting any deliverable, run `git status --porcelain` (it covers modified and untracked files) and compare every path against the union of the file/module ownership lists on that wave's ledger entries, plus `protectedPaths` from `pl.local.md` (Repo-local config in SKILL.md) when present. A path outside every list is an ownership violation regardless of whether the change looks correct: do not accept the wave, ask the owning role session to revert the path or justify it, and record the incident in the execution ledger. The one-owner-per-file rule above is only as real as this check — without it a violation surfaces later as a conflicting edit or not at all.
 
