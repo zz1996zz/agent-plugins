@@ -75,6 +75,7 @@ $pl <기능 요청>           (Codex CLI)
 - routine한 요청(오탈자 점검 등)은 솔로 패스로 가볍게 처리됩니다.
 - 기능 작업이면 역할 팀 구성 → 토론 → 결정 → 구현 → 검증 → 메모리 기록까지 진행됩니다.
 - work 네임스페이스는 **canonical 레포명**(origin remote 기준)으로 정해집니다 — worktree나 워크스페이스 디렉토리 이름에 영향받지 않습니다. 특정 업무로 기록하려면 요청에 업무명을 명시하거나, 레포에 고정하려면 [레포 로컬 설정](#레포-로컬-설정-선택)의 `workNamespace`를 쓰세요.
+- 역할 세션은 리드 모델을 그대로 상속하므로, 비용과 요청 한도는 리드 모델 선택(`claude --model …`, `codex -m …`)으로 통제합니다.
 
 ## 메모리 백엔드 (온보딩 1회)
 
@@ -137,7 +138,7 @@ protectedPaths:                    # 팀원은 절대, 리드는 명시 요청 �
 | 공유 태스크 목록 | 있음 (`TaskList`, 대화형 세션 한정 — 헤드리스는 Execution Ledger) | 없음 — feature 노트 Execution Ledger가 유일한 태스크 상태 |
 | 역할별 허용 도구 | 에이전트 `tools` 목록 | 없음 — `sandbox_mode`(read-only / workspace-write)로 근사, 나머지는 역할 본문의 산문 규칙 |
 | 역할 정의 설치 | 플러그인에 번들 | `install-codex.sh`로 `~/.codex/agents/`에 복사 |
-| 모델 | 프론트매터 `opus`/`sonnet` | `build_codex_agents.py`의 `MODEL_MAP`으로 변환 |
+| 모델 | 리드 모델 상속 (`model: inherit`), 검문소 역할만 effort xhigh | 동일 — TOML 에 model 없음, 검문소 역할만 `model_reasoning_effort = xhigh` |
 | 진입점 암묵 호출 | `disable-model-invocation`으로 `/pl:pl` 명시 호출만 | description 기반 암묵 호출 허용 (`$pl` 또는 'PL 에이전트로' 요청) |
 | 샌드박스 | 해당 없음 | `workspace-write`는 `.git` 쓰기를 막아 커밋 요청이 실패한다 — 커밋까지 맡기려면 샌드박스 설정을 조정 |
 | 추천 조합 플러그인 | 아래 표 | 해당 없음 (Claude 마켓플레이스 전용) |

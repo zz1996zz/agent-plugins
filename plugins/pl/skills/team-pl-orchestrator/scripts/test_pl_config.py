@@ -33,24 +33,35 @@ HOST_WORDS = (
 )
 
 ROLE_CONFIG = {
-    "team-pl-product-analyst": ("sonnet", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
-    "team-pl-qa-engineer": ("opus", {"Read", "Bash", "Grep", "Glob"} | TEAM_TOOLS),
-    "team-pl-architect": ("opus", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
+    "team-pl-product-analyst": ("inherit", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
+    "team-pl-qa-engineer": ("inherit", {"Read", "Bash", "Grep", "Glob"} | TEAM_TOOLS),
+    "team-pl-architect": ("inherit", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
     "team-pl-backend-engineer": (
-        "sonnet",
+        "inherit",
         {"Read", "Write", "Edit", "Bash", "Grep", "Glob"} | TEAM_TOOLS,
     ),
     "team-pl-frontend-engineer": (
-        "sonnet",
+        "inherit",
         {"Read", "Write", "Edit", "Bash", "Grep", "Glob"} | TEAM_TOOLS,
     ),
     "team-pl-data-engineer": (
-        "sonnet",
+        "inherit",
         {"Read", "Write", "Edit", "Bash", "Grep", "Glob"} | TEAM_TOOLS,
     ),
-    "team-pl-integration-reviewer": ("opus", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
-    "team-pl-code-reviewer": ("opus", {"Read", "Bash", "Grep", "Glob"} | TEAM_TOOLS),
-    "team-pl-security-reviewer": ("opus", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
+    "team-pl-integration-reviewer": ("inherit", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
+    "team-pl-code-reviewer": ("inherit", {"Read", "Bash", "Grep", "Glob"} | TEAM_TOOLS),
+    "team-pl-security-reviewer": ("inherit", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
+}
+
+# Check roles are the recall-critical gates other work depends on and run at
+# `effort: xhigh`; production roles inherit effort from the lead along with
+# the model (see references/roles.md Model Policy).
+CHECK_ROLES = {
+    "team-pl-architect",
+    "team-pl-qa-engineer",
+    "team-pl-integration-reviewer",
+    "team-pl-code-reviewer",
+    "team-pl-security-reviewer",
 }
 
 LEGACY_ROLE_NAMES = {name.replace("team-pl-", "team-", 1) for name in ROLE_CONFIG}
@@ -111,16 +122,19 @@ class PlConfigTests(unittest.TestCase):
         for legacy_name in LEGACY_ROLE_NAMES:
             self.assertFalse((AGENTS_DIR / f"{legacy_name}.md").exists(), legacy_name)
 
-        model_counts = {"sonnet": 0, "opus": 0}
+        check_role_count = 0
         for role, (expected_model, expected_tools) in ROLE_CONFIG.items():
             frontmatter = read_frontmatter(role_files[role])
             self.assertEqual(role, frontmatter.get("name"))
             self.assertEqual(expected_model, frontmatter.get("model"), role)
             self.assertEqual(expected_tools, parse_tools(frontmatter.get("tools", "")), role)
-            # Opus roles are the checks other work depends on; pin their effort so a
-            # later edit cannot silently drop recall. Sonnet roles run at the default.
-            expected_effort = "xhigh" if expected_model == "opus" else None
+            # Check roles are the gates other work depends on; pin their effort so a
+            # later edit cannot silently drop recall. Production roles inherit effort
+            # from the lead along with the model, so they leave it unset.
+            expected_effort = "xhigh" if role in CHECK_ROLES else None
             self.assertEqual(expected_effort, frontmatter.get("effort"), role)
+            if role in CHECK_ROLES:
+                check_role_count += 1
             self.assertNotIn("permissionMode", frontmatter, role)
             # Description은 상주 컨텍스트 비용이므로 압축 형식을 유지한다.
             # 금지 규칙 전문(standalone subagent 금지)은 본문(스폰 시 로드)에 있다.
@@ -166,12 +180,12 @@ class PlConfigTests(unittest.TestCase):
             if role == "team-pl-qa-engineer":
                 self.assertIn("not the definition of the solution", role_text, role)
             self.assertTrue(TEAM_TOOLS <= expected_tools, role)
-            model_counts[expected_model] += 1
 
-        # Sonnet where a wrong output is caught downstream (lead verifies
-        # implementation; the user answers the product memo's open questions),
-        # Opus where the output is itself the check; see roles.md Model Policy.
-        self.assertEqual({"sonnet": 4, "opus": 5}, model_counts)
+        # Every role inherits the lead's model; only the five check roles pin
+        # effort: xhigh (they are the checks other work depends on) — see
+        # roles.md Model Policy. The other four inherit effort too.
+        self.assertEqual(5, check_role_count)
+        self.assertEqual(4, len(ROLE_CONFIG) - check_role_count)
         self.assertFalse(list(AGENTS_DIR.glob("team-pl-*-opus.md")))
 
         names: dict[str, list[Path]] = {}
@@ -403,7 +417,8 @@ class PlConfigTests(unittest.TestCase):
         for role in ROLE_CONFIG:
             self.assertIn(role, roles_text)
         self.assertIn("## Model Policy", roles_text)
-        self.assertIn("Do not pass an invocation-level model override", roles_text)
+        self.assertIn("inherit", roles_text)
+        self.assertIn("would break inheritance", roles_text)
         self.assertIn("treat any same-name collision as unavailable", roles_text)
         self.assertNotIn("Output:", roles_text)
         self.assertNotIn("The memo must contain:", roles_text)
@@ -425,6 +440,11 @@ class PlConfigTests(unittest.TestCase):
         self.assertNotIn("Spawn a fresh teammate", debate_text)
         self.assertNotIn("Each memo must include:", debate_text)
 
+    # Every role now inherits the lead's model (frontmatter `model: inherit`);
+    # a `CLAUDE_CODE_SUBAGENT_MODEL` left set on the user's machine would still
+    # override that inheritance for any session that omits `model`, so this
+    # stays a machine-specific guard rather than something the plugin itself
+    # can enforce.
     def test_launch_alias_and_model_override_policy(self) -> None:
         if os.environ.get("PL_SKIP_MACHINE_TESTS"):
             self.skipTest("PL_SKIP_MACHINE_TESTS set")

@@ -2,7 +2,7 @@
 name: team-pl-architect
 description: PL-team architecture reviewer. Role session; spawned by the PL lead only.
 tools: Read, Grep, Glob, SendMessage, TaskList, TaskGet, TaskUpdate
-model: opus
+model: inherit
 effort: xhigh
 ---
 

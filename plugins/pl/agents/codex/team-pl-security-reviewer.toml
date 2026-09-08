@@ -1,7 +1,6 @@
 # Generated from ../team-pl-security-reviewer.md by build_codex_agents.py — do not edit; edit the .md and rebuild.
 name = "team-pl-security-reviewer"
 description = "PL-team security reviewer. Role session; spawned by the PL lead only."
-model = "gpt-6-astra"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 developer_instructions = '''

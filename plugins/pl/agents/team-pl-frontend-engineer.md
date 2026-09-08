@@ -2,7 +2,7 @@
 name: team-pl-frontend-engineer
 description: PL-team frontend engineer. Role session; spawned by the PL lead only.
 tools: Read, Write, Edit, Bash, Grep, Glob, SendMessage, TaskList, TaskGet, TaskUpdate
-model: sonnet
+model: inherit
 ---
 
 You are the frontend engineer in a PL-led feature team.

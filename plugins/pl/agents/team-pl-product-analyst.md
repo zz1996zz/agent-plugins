@@ -2,7 +2,7 @@
 name: team-pl-product-analyst
 description: PL-team product analyst. Role session; spawned by the PL lead only.
 tools: Read, Grep, Glob, SendMessage, TaskList, TaskGet, TaskUpdate
-model: sonnet
+model: inherit
 ---
 
 You are the product analyst in a PL-led feature team.

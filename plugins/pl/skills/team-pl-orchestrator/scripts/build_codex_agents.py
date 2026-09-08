@@ -4,6 +4,12 @@
 Codex cannot bundle agents inside a plugin (openai/codex#18988), so the generated
 files under agents/codex/ are copied into $CODEX_HOME/agents/ by install-codex.sh.
 Source of truth stays agents/team-pl-*.md; never edit the TOML by hand.
+
+Every role session inherits the model of the parent (lead) session on both
+hosts, so the generated TOML never sets `model` — Codex subagents inherit the
+parent session's model when the key is absent. Only the frontmatter `effort`
+value (set on the five check roles) becomes `model_reasoning_effort`; roles
+that inherit effort too simply omit the key.
 """
 
 from __future__ import annotations
@@ -18,16 +24,6 @@ PLUGIN_ROOT = SCRIPT_DIR.parents[2]
 DEFAULT_AGENTS_DIR = PLUGIN_ROOT / "agents"
 DEFAULT_OUT_DIR = DEFAULT_AGENTS_DIR / "codex"
 
-# Role tier -> Codex model. Verified 2026-09-08 at https://learn.chatgpt.com/docs/models
-# (redirects from https://developers.openai.com/codex/models).
-# opus tier: gpt-6-astra — "our most capable model for complex work across code,
-# apps, and research" (top tier). sonnet tier: gpt-5.6-terra — "a balanced GPT-5.6
-# model for everyday work" (standard/default tier).
-MODEL_MAP: dict[str, str] = {
-    "opus": "gpt-6-astra",
-    "sonnet": "gpt-5.6-terra",
-}
-DEFAULT_EFFORT = "high"
 # Claude tools that mutate the working tree. Their presence decides sandbox_mode.
 EDIT_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 
@@ -64,21 +60,19 @@ def _toml_multiline(value: str) -> str:
 
 def render_toml(frontmatter: dict[str, str], body: str) -> str:
     name = frontmatter["name"]
-    model_tier = frontmatter.get("model", "")
-    if model_tier not in MODEL_MAP:
-        raise ValueError(f"{name}: unknown model tier {model_tier!r}; expected one of {sorted(MODEL_MAP)}")
     tools = {t.strip() for t in frontmatter.get("tools", "").split(",") if t.strip()}
     sandbox = "workspace-write" if tools & EDIT_TOOLS else "read-only"
-    effort = frontmatter.get("effort") or DEFAULT_EFFORT
-    return (
-        f"# Generated from ../{name}.md by build_codex_agents.py — do not edit; edit the .md and rebuild.\n"
-        f"name = {_toml_string(name)}\n"
-        f"description = {_toml_string(frontmatter.get('description', ''))}\n"
-        f"model = {_toml_string(MODEL_MAP[model_tier])}\n"
-        f"model_reasoning_effort = {_toml_string(effort)}\n"
-        f"sandbox_mode = {_toml_string(sandbox)}\n"
-        f"developer_instructions = {_toml_multiline(body)}\n"
-    )
+    effort = frontmatter.get("effort")
+    lines = [
+        f"# Generated from ../{name}.md by build_codex_agents.py — do not edit; edit the .md and rebuild.\n",
+        f"name = {_toml_string(name)}\n",
+        f"description = {_toml_string(frontmatter.get('description', ''))}\n",
+    ]
+    if effort:
+        lines.append(f"model_reasoning_effort = {_toml_string(effort)}\n")
+    lines.append(f"sandbox_mode = {_toml_string(sandbox)}\n")
+    lines.append(f"developer_instructions = {_toml_multiline(body)}\n")
+    return "".join(lines)
 
 
 def build(agents_dir: Path, out_dir: Path, check: bool) -> int:
