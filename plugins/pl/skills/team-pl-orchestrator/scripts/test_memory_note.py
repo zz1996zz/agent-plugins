@@ -258,6 +258,51 @@ class MemoryNoteTests(unittest.TestCase):
         feature.write_text(original, encoding="utf-8")
         self.assertIn("0 broken local links", self.run_helper("check").stdout)
 
+    def test_check_accepts_status_reason_after_the_status_token(self) -> None:
+        self.run_helper("feature", "acme", "Status reason test", "--repo", "/tmp/acme")
+        feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
+        original = feature.read_text(encoding="utf-8")
+
+        feature.write_text(
+            original.replace("status: in-progress", "status: done-with-risks", 1).replace(
+                "- Status: in-progress",
+                "- Status: done-with-risks (verification could not run)",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+    def test_check_ignores_placeholders_inside_code(self) -> None:
+        self.run_helper("feature", "acme", "Code span test", "--repo", "/tmp/acme")
+        feature = next((self.root / "work" / "acme" / "features").glob("*.md"))
+        original = feature.read_text(encoding="utf-8")
+
+        quoted_code = original.replace(
+            "## Open Questions",
+            "## Notes\n\n"
+            "- The helper returns `Promise<string | null>` on miss.\n\n"
+            "```\n"
+            "- Runtime cleanup: <a | b>\n"
+            "```\n\n"
+            "## Open Questions",
+            1,
+        )
+        feature.write_text(quoted_code, encoding="utf-8")
+        self.assertIn("0 broken local links", self.run_helper("check").stdout)
+
+        # The same text outside code is still an unfinished note.
+        feature.write_text(
+            quoted_code.replace(
+                "- Runtime cleanup: host-owned",
+                "- Runtime cleanup: <host-owned | not applicable>",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        result = self.run_helper("check", expect_ok=False)
+        self.assertIn("unresolved placeholder", result.stdout)
+
     def test_check_rejects_nonstandard_feature_status(self) -> None:
         self.run_helper("feature", "acme", "Status vocab test", "--repo", "/tmp/acme")
         feature = next((self.root / "work" / "acme" / "features").glob("*.md"))

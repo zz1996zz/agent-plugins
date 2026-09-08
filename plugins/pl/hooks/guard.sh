@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pl PreToolUse guard. SKILL.md 의 Safety Boundaries 가 산문으로 금지한 파괴적 지름길을
 # 기계적으로 막는다: force-push, reset --hard, clean -f, --no-verify(와 core.hooksPath 우회),
-# stash drop/clear, branch -D, 그리고 미커밋 변경을 폐기하는 restore·checkout -- <path>.
+# stash drop/clear, branch -D, 그리고 미커밋 변경을 폐기하는 restore·checkout·switch 형태.
 #
 # 커밋·push 자체는 막지 않는다 — 훅은 사용자가 그걸 요청했는지 알 수 없다. 여기서 막는 것은
 # 어떤 요청에서도 에이전트가 스스로 택하면 안 되는 지름길이다. 사용자가 진짜 원하면 프롬프트에서
@@ -26,11 +26,13 @@ deny() {
   exit 0
 }
 
-# 세그먼트로 쪼갠 뒤 인용문을 지운다. 인용문 안의 단어는 플래그가 아니다.
+# 세그먼트로 쪼갠 뒤 인용문을 자리표시 토큰 `Q` 로 바꾼다. 지워 버리면 `git restore "README.md"`
+# 처럼 인용된 경로가 위치 인자 없이 남아 판정을 빠져나간다. `Q` 는 플래그가 아니므로 커밋 메시지
+# 속 `--force` 는 여전히 플래그로 세지 않는다.
 segments="$(printf '%s' "$cmd" | awk '{ gsub(/&&/,"\n"); gsub(/\|\|/,"\n"); gsub(/;/,"\n"); gsub(/\|/,"\n"); print }')"
 
 while IFS= read -r raw; do
-  seg="$(printf '%s' "$raw" | sed -E "s/\"[^\"]*\"//g; s/'[^']*'//g" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  seg="$(printf '%s' "$raw" | sed -E "s/\"[^\"]*\"/Q/g; s/'[^']*'/Q/g" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
   [ -n "$seg" ] || continue
   # 앞의 환경변수 대입(FOO=bar git …)은 건너뛴다.
   seg="$(printf '%s' "$seg" | sed -E 's/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')"
@@ -84,36 +86,70 @@ while IFS= read -r raw; do
     restore)
       # `git restore <path>` 는 reset --hard 와 같은 급의 소실이다 — 워킹트리의 미커밋 변경이
       # 사라진다. 인덱스만 되돌리는 `--staged` 단독은 워킹트리를 건드리지 않으므로 통과시킨다.
-      staged=0; worktree=0; source=0; pathish=0
+      # 인용된 경로는 위에서 `Q` 로 남고, 여기서는 그것도 위치 인자(경로)로 센다.
+      staged=0; worktree=0; src_given=0; pathish=0
       for t in ${rest[@]+"${rest[@]}"}; do
         case "$t" in
           --staged) staged=1 ;;
           --worktree) worktree=1 ;;
-          --source|--source=*) source=1 ;;
+          --source|--source=*) src_given=1 ;;
           --) pathish=1 ;;
           --*) ;;
+          -s*) src_given=1 ;;   # 짧은 형태 `-s <tree>` 도 --source 와 같다
           -[a-zA-Z]*)
             case "$t" in *S*) staged=1 ;; esac
-            case "$t" in *W*) worktree=1 ;; esac ;;
+            case "$t" in *W*) worktree=1 ;; esac
+            case "$t" in *s*) src_given=1 ;; esac ;;
           *) pathish=1 ;;
         esac
       done
-      if [ "$staged" = 1 ] && [ "$worktree" = 0 ] && [ "$source" = 0 ]; then
+      if [ "$staged" = 1 ] && [ "$worktree" = 0 ] && [ "$src_given" = 0 ]; then
         :
-      elif [ "$pathish" = 1 ] || [ "$source" = 1 ] || [ "$worktree" = 1 ]; then
+      elif [ "$pathish" = 1 ] || [ "$src_given" = 1 ] || [ "$worktree" = 1 ]; then
         deny "미커밋 변경 폐기(restore)"
       fi ;;
     checkout)
-      # 브랜치 전환(`git checkout <branch>`, `-b`, `-`)은 통과. pathspec 형태
-      # (`git checkout -- <path>`, `git checkout HEAD -- <path>`, `git checkout .`)는 폐기다.
-      dashdash=0; nargs=0; first=""
+      # 브랜치 전환(`git checkout <branch>`, `-b`, `-`, `-q main`)은 통과. 워킹트리를 덮어쓰는
+      # 형태는 폐기다: pathspec(`-- <path>`, `<tree-ish> <path>`, `.`, `./src`, `src/`)과 `-f`.
+      # `-b`/`-B`/`--orphan` 이 있으면 브랜치 생성이므로 `--`·인자 2개 규칙을 적용하지 않는다
+      # (`git checkout -b feat --` 오탐 방지).
+      # 한계: 인용된 경로는 `Q` 한 토큰으로 남아 브랜치명과 구별할 수 없어 `git checkout "."` 은
+      # 통과한다. `restore` 는 위치 인자 자체를 경로로 보므로 그쪽에는 이 구멍이 없다.
+      dashdash=0; nargs=0; first=""; newbranch=0
       for t in ${rest[@]+"${rest[@]}"}; do
-        [ "$t" = "--" ] && dashdash=1
-        nargs=$((nargs+1))
-        [ "$nargs" = 1 ] && first="$t"
+        case "$t" in
+          --) dashdash=1 ;;
+          -b|-B|--orphan) newbranch=1 ;;
+          --force) deny "미커밋 변경 폐기(checkout -f)" ;;
+          --*) ;;
+          -) ;;
+          -[a-zA-Z]*)
+            case "$t" in *f*) deny "미커밋 변경 폐기(checkout -f)" ;; esac
+            case "$t" in *b*|*B*) newbranch=1 ;; esac ;;
+          *) nargs=$((nargs+1)); [ "$nargs" = 1 ] && first="$t" ;;
+        esac
       done
-      [ "$dashdash" = 1 ] && deny "미커밋 변경 폐기(checkout -- <path>)"
-      [ "$nargs" = 1 ] && [ "$first" = "." ] && deny "미커밋 변경 폐기(checkout .)" ;;
+      if [ "$newbranch" = 0 ]; then
+        [ "$dashdash" = 1 ] && deny "미커밋 변경 폐기(checkout -- <path>)"
+        [ "$nargs" -ge 2 ] && deny "미커밋 변경 폐기(checkout <tree-ish> <path>)"
+      fi
+      if [ "$nargs" = 1 ]; then
+        case "$first" in
+          .|./*|../*|*/) deny "미커밋 변경 폐기(checkout <pathspec>)" ;;
+        esac
+      fi ;;
+    switch)
+      # checkout 에서 분리된 브랜치 전환 명령. 전환 자체는 통과하되, 미커밋 변경을 버리는
+      # `-f`/`--force`/`--discard-changes` 는 막는다. `-C`/`--force-create` 는 브랜치 강제
+      # 생성이라 워킹트리를 버리지 않으므로 통과한다.
+      for t in ${rest[@]+"${rest[@]}"}; do
+        case "$t" in
+          --force|--discard-changes) deny "미커밋 변경 폐기(switch --discard-changes)" ;;
+          --*) ;;
+          -) ;;
+          -[a-zA-Z]*) case "$t" in *f*) deny "미커밋 변경 폐기(switch -f)" ;; esac ;;
+        esac
+      done ;;
     stash)
       case "${rest[0]:-}" in drop|clear) deny "stash ${rest[0]}(보관된 작업 삭제)" ;; esac ;;
     branch)

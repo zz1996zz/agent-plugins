@@ -99,7 +99,7 @@ $pl <기능 요청>           (Codex CLI)
 |---|---|
 | force-push | `git push --force`, `-f`, `--force-with-lease` |
 | hard reset | `git reset --hard` |
-| 미커밋 변경 폐기 | `git restore <path>`, `git checkout -- <path>` |
+| 미커밋 변경 폐기 | `git restore <path>`, `git checkout -- <path>`, `git checkout -f`, `git switch -f`/`--discard-changes` |
 | 추적되지 않은 파일 삭제 | `git clean -f`, `-fd` |
 | 검사 우회 | `--no-verify`, `git commit -n`, `git -c core.hooksPath=…` |
 | 보관·브랜치 강제 삭제 | `git stash drop`/`clear`, `git branch -D` |

@@ -132,6 +132,18 @@ FRONTMATTER_PATTERN = re.compile(r"\A---\r?\n(.*?\n)---\r?\n", re.S)
 CHOICE_PLACEHOLDER_PATTERN = re.compile(r"<[^<>\n]*\|[^<>\n]*>")
 COMPLETION_SECTION_PATTERN = re.compile(r"(?ms)^## Completion\n(.*?)(?=^## |\Z)")
 COMPLETION_STATUS_PATTERN = re.compile(r"(?m)^-?\s*Status:\s*(.+)$")
+# Code is quoted evidence, not note prose: a fenced block or an inline span may
+# legitimately hold `Promise<string | null>` or a shell snippet. Strip both before
+# the placeholder and Completion-status scans so quoted code cannot fail `check`.
+FENCED_CODE_PATTERN = re.compile(
+    r"(?ms)^[ \t]{0,3}(?P<fence>`{3,}|~{3,})[^\n]*\n.*?(?:^[ \t]{0,3}(?P=fence)[ \t]*$|\Z)"
+)
+INLINE_CODE_PATTERN = re.compile(r"`+[^`\n]*`+")
+
+
+def strip_code(text: str) -> str:
+    """Remove fenced code blocks and inline code spans from note text."""
+    return INLINE_CODE_PATTERN.sub("", FENCED_CODE_PATTERN.sub("", text))
 
 
 def parse_frontmatter(text: str) -> dict[str, str] | None:
@@ -650,7 +662,8 @@ def check_memory(args: argparse.Namespace) -> int:
             if target is not None and not target.exists():
                 problems.append(f"missing local link: {note} -> {destination}")
         if "_template" not in note.parts and not note.name.startswith("_"):
-            for placeholder in dict.fromkeys(CHOICE_PLACEHOLDER_PATTERN.findall(text)):
+            prose = strip_code(text)
+            for placeholder in dict.fromkeys(CHOICE_PLACEHOLDER_PATTERN.findall(prose)):
                 problems.append(f"unresolved placeholder: {note} -> {placeholder}")
 
     for decision in (root / "work").glob("*/decisions/*.md"):
@@ -685,13 +698,16 @@ def check_memory(args: argparse.Namespace) -> int:
         # The frontmatter is the machine-read surface; Completion is what a
         # reader sees. A note whose two statuses disagree is unfinished.
         frontmatter_status = (frontmatter or {}).get("status")
-        completion = COMPLETION_SECTION_PATTERN.search(text)
+        completion = COMPLETION_SECTION_PATTERN.search(strip_code(text))
         if frontmatter_status and completion:
             body_status = COMPLETION_STATUS_PATTERN.search(completion.group(1))
-            if body_status and body_status.group(1).strip() != frontmatter_status:
+            # Only the leading token is the status; `done-with-risks (evidence gap …)`
+            # is a legitimate way to write the same status with its reason.
+            body_token = body_status.group(1).split()[0] if body_status else None
+            if body_token and body_token != frontmatter_status:
                 problems.append(
                     f"feature status mismatch: {feature} -> frontmatter"
-                    f" {frontmatter_status!r} vs Completion {body_status.group(1).strip()!r}"
+                    f" {frontmatter_status!r} vs Completion {body_token!r}"
                 )
 
     if problems:

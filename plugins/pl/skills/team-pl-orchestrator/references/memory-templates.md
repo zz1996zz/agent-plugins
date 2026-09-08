@@ -12,7 +12,7 @@ Use these templates in the configured memory backend (see the adapter references
 
 ## Note Format
 
-Feature and decision notes start with YAML frontmatter (OKF-compatible: `type`, `title`, `status`, `date`, `owner`, `work`, plus `repo`/`status_note`/`tags` when relevant). Frontmatter is the single machine-read surface: Obsidian indexes it natively (property search, Bases/Dataview) and agents can read only the first lines of a file to know its state without parsing the body. Relational links (`Related decisions:`, `Related feature:`, etc.) stay in the body under the H1 so link validation and backlink insertion keep working. Do not duplicate frontmatter fields as plain body lines; legacy unmigrated notes with a plain `Status:` line are still accepted by `check` as a fallback only.
+Feature and decision notes start with YAML frontmatter (OKF-compatible: `type`, `title`, `status`, `date`, `owner`, `work`, plus `repo`/`status_note`/`tags` when relevant). Frontmatter is the single machine-read surface: Obsidian indexes it natively (property search, Bases/Dataview) and agents can read only the first lines of a file to know its state without parsing the body. Relational links (`Related decisions:`, `Related feature:`, etc.) stay in the body under the H1 so link validation and backlink insertion keep working. Do not duplicate frontmatter fields as plain body lines; legacy unmigrated notes with a plain `Status:` line are still accepted by `check` as a fallback only. A feature note's `status` is one of `in-progress`, `done`, `done-with-risks`, or `blocked`; the Completion section's `Status:` line carries the same value, optionally followed by a short reason.
 
 ## Workspace Layout
 
@@ -139,7 +139,7 @@ Out:
 
 ## Completion
 
-- Status: in-progress / done / done-with-risks / blocked
+- Status: in-progress
 - Residual risk:
 
 ## Open Questions
