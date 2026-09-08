@@ -146,6 +146,36 @@ def strip_code(text: str) -> str:
     return INLINE_CODE_PATTERN.sub("", FENCED_CODE_PATTERN.sub("", text))
 
 
+TEAM_LIFECYCLE_SECTION_PATTERN = re.compile(r"(?ms)^## Team Lifecycle\n(.*?)(?=^## |\Z)")
+# `done` can never be true if a required role session was force-closed or
+# never delivered. These phrases are how a lead records that gap in prose;
+# match them, not the template's own field labels (stripped below first).
+DONE_FORBIDDEN_LIFECYCLE_PHRASES = ("not delivered", "force-closed", "force-stopped", "not spawned")
+_LIFECYCLE_FIELD_LABELS = (
+    "Spawned",
+    "Reused",
+    "Replaced",
+    "Shut down",
+    "Force-stopped",
+    "Unconfirmed stop",
+    "Runtime cleanup",
+    "Role sandbox",
+)
+LIFECYCLE_LABEL_LINE_PATTERN = re.compile(
+    rf"(?im)^-\s*(?:{'|'.join(_LIFECYCLE_FIELD_LABELS)}):\s*"
+)
+
+
+def strip_lifecycle_labels(text: str) -> str:
+    """Drop the Team Lifecycle template's own field labels before phrase-matching.
+
+    The `Force-stopped:` field label itself contains the substring
+    "force-stopped", so scanning raw section text would flag every note.
+    Only the lead-written values should be searched.
+    """
+    return LIFECYCLE_LABEL_LINE_PATTERN.sub("", text)
+
+
 def parse_frontmatter(text: str) -> dict[str, str] | None:
     """Parse the leading YAML frontmatter block into flat scalar fields.
 
@@ -446,6 +476,7 @@ Out:
 - Force-stopped:
 - Unconfirmed stop:
 - Runtime cleanup: host-owned
+- Role sandbox: <inherited from lead session | read-only enforced>
 
 ## Discussion Summary
 
@@ -663,8 +694,19 @@ def check_memory(args: argparse.Namespace) -> int:
                 problems.append(f"missing local link: {note} -> {destination}")
         if "_template" not in note.parts and not note.name.startswith("_"):
             prose = strip_code(text)
-            for placeholder in dict.fromkeys(CHOICE_PLACEHOLDER_PATTERN.findall(prose)):
-                problems.append(f"unresolved placeholder: {note} -> {placeholder}")
+            # A note still in-progress (e.g. a fresh feature note's `Role
+            # sandbox: <...>` field) is allowed one deliberate placeholder;
+            # placeholders are enforced only once the note claims to be
+            # finished, so the lead is forced to fill them in before then.
+            completion_match = COMPLETION_SECTION_PATTERN.search(prose)
+            in_progress = False
+            if completion_match:
+                status_match = COMPLETION_STATUS_PATTERN.search(completion_match.group(1))
+                token = status_match.group(1).split()[0] if status_match else None
+                in_progress = token == "in-progress"
+            if not in_progress:
+                for placeholder in dict.fromkeys(CHOICE_PLACEHOLDER_PATTERN.findall(prose)):
+                    problems.append(f"unresolved placeholder: {note} -> {placeholder}")
 
     for decision in (root / "work").glob("*/decisions/*.md"):
         text = decision.read_text(encoding="utf-8")
@@ -698,17 +740,34 @@ def check_memory(args: argparse.Namespace) -> int:
         # The frontmatter is the machine-read surface; Completion is what a
         # reader sees. A note whose two statuses disagree is unfinished.
         frontmatter_status = (frontmatter or {}).get("status")
-        completion = COMPLETION_SECTION_PATTERN.search(strip_code(text))
-        if frontmatter_status and completion:
+        stripped_text = strip_code(text)
+        completion = COMPLETION_SECTION_PATTERN.search(stripped_text)
+        completion_token = None
+        if completion:
             body_status = COMPLETION_STATUS_PATTERN.search(completion.group(1))
             # Only the leading token is the status; `done-with-risks (evidence gap …)`
             # is a legitimate way to write the same status with its reason.
-            body_token = body_status.group(1).split()[0] if body_status else None
-            if body_token and body_token != frontmatter_status:
-                problems.append(
-                    f"feature status mismatch: {feature} -> frontmatter"
-                    f" {frontmatter_status!r} vs Completion {body_token!r}"
-                )
+            completion_token = body_status.group(1).split()[0] if body_status else None
+        if frontmatter_status and completion_token and completion_token != frontmatter_status:
+            problems.append(
+                f"feature status mismatch: {feature} -> frontmatter"
+                f" {frontmatter_status!r} vs Completion {completion_token!r}"
+            )
+
+        # A `done` note is a promise that every required gate, reviewer
+        # included, actually closed. Catch the contradiction mechanically
+        # instead of trusting the lead's own summary: a role that was
+        # force-closed or never delivered its memo can only justify
+        # `done-with-risks`, never `done`.
+        if completion_token == "done":
+            lifecycle_match = TEAM_LIFECYCLE_SECTION_PATTERN.search(stripped_text)
+            lifecycle_text = lifecycle_match.group(1) if lifecycle_match else stripped_text
+            scanned = strip_lifecycle_labels(lifecycle_text).lower()
+            for phrase in DONE_FORBIDDEN_LIFECYCLE_PHRASES:
+                if phrase in scanned:
+                    problems.append(
+                        f"done status contradicts Team Lifecycle: {feature} -> {phrase!r}"
+                    )
 
     if problems:
         for problem in problems:
