@@ -2,10 +2,11 @@
 
 # pl
 
-**`/pl:pl` 한 번으로 역할 에이전트 팀이 토론하고, 구현하고, 검증하고, 결정을 기억합니다**
+**`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 에이전트 팀이 토론하고, 구현하고, 검증하고, 결정을 기억합니다**
 
-![version](https://img.shields.io/badge/version-0.2.1-blue)
+![version](https://img.shields.io/badge/version-0.3.0-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
+![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![memory](https://img.shields.io/badge/memory-Obsidian%20%7C%20Notion-7c3aed)
 ![agents](https://img.shields.io/badge/role%20agents-9-success)
 
@@ -42,17 +43,30 @@ flowchart LR
 
 ## 설치
 
-> **전제조건**: macOS/Linux + `python3` 3.10 이상 (Obsidian 백엔드 헬퍼가 Unix 전용 잠금 `fcntl`을 사용합니다. Windows 미지원) + `jq` ([안전 훅](#안전-훅)이 도구 호출 페이로드를 읽는 데 씁니다 — 없으면 훅이 **조용히 비활성**됩니다. macOS: `brew install jq`). 마켓플레이스 접근 조건은 [루트 README](../../README.md#설치) 참조.
+> **전제조건**: macOS/Linux + `python3` 3.10 이상 (Obsidian 백엔드 헬퍼가 Unix 전용 잠금 `fcntl`을 사용합니다. Windows 미지원) + `jq` ([안전 훅](#안전-훅)이 도구 호출 페이로드를 읽는 데 씁니다 — 없으면 훅이 **조용히 비활성**됩니다. macOS: `brew install jq`). 호스트는 Claude Code 또는 Codex CLI 0.153 이상. 마켓플레이스 접근 조건은 [루트 README](../../README.md#설치) 참조.
+
+**Claude Code**
 
 ```
-/plugin marketplace add zz1996zz/claude-code-plugins
+/plugin marketplace add zz1996zz/agent-plugins
 /plugin install pl@zz1996zz
 ```
+
+**Codex CLI**
+
+```
+codex plugin marketplace add zz1996zz/agent-plugins
+codex plugin add pl@zz1996zz
+bash ~/.codex/plugins/cache/zz1996zz/pl/*/install-codex.sh
+```
+
+세 번째 줄이 필요한 이유: Codex 플러그인은 skills·hooks는 번들하지만 역할 에이전트 정의는 번들하지 못합니다 ([openai/codex#18988](https://github.com/openai/codex/issues/18988)). `install-codex.sh`가 `agents/codex/*.toml`을 `~/.codex/agents/`에 복사합니다. 이슈가 닫히면 이 단계는 사라집니다. 훅이 발동하지 않으면 `~/.codex/config.toml`에 `[features] hooks = true`를 확인하세요.
 
 ## 사용
 
 ```
-/pl:pl <기능 요청>
+/pl:pl <기능 요청>        (Claude Code)
+$pl <기능 요청>           (Codex CLI)
 ```
 
 예: `/pl:pl 주문 취소 API에 부분 취소 지원 추가`
@@ -71,10 +85,11 @@ flowchart LR
 | **Notion** (공식 MCP, source of truth) | Notion 계정 | 공식 MCP 서버 1회 추가(온보딩이 명령 안내) + `/mcp` OAuth + 메모리 root 페이지 URL 붙여넣기 |
 
 - Notion 선택 시 root 페이지 아래 **Features/Decisions 데이터베이스**와 **Works 페이지**가 자동 생성됩니다.
-- 백엔드 변경: `${CLAUDE_PLUGIN_DATA}/config.json` 삭제 후 재온보딩 (기존 데이터 이관은 미지원).
+- 백엔드 변경: `<data-dir>/config.json` 삭제 후 재온보딩 (기존 데이터 이관은 미지원).
 - Notion MCP 서버는 플러그인에 동봉되지 않습니다 — Notion 백엔드를 선택했을 때만 온보딩이 추가를 안내합니다. Obsidian만 쓰면 외부 서비스 의존성이 0입니다.
 - `config.json`이 유실돼도(재설치·`uninstall` 등) vault가 남아 있으면 다음 실행에서 자동 탐지(`repair`)로 재연결을 제안합니다. Notion 백엔드는 디스크에서 탐지할 수 없어 재온보딩이 필요하며, 기존 데이터베이스는 재사용됩니다.
-- Notion 쓰기 실패 시 기록은 `${CLAUDE_PLUGIN_DATA}/pending/`에 보존됐다가 다음 실행에서 업서트로 재반영됩니다 — 조용한 유실이 없습니다.
+- Notion 쓰기 실패 시 기록은 `<data-dir>/pending/`에 보존됐다가 다음 실행에서 업서트로 재반영됩니다 — 조용한 유실이 없습니다.
+- `<data-dir>`은 Claude Code에서 `${CLAUDE_PLUGIN_DATA}`(= `~/.claude/plugins/data/pl-zz1996zz/`), Codex CLI에서 `~/.codex/plugins/data/pl/` 입니다. 두 호스트를 같은 머신에서 쓰면 온보딩이 각각 한 번씩 일어납니다 — 같은 vault 경로를 답하면 메모리가 공유됩니다 (Obsidian은 두 번째 호스트에서 `repair`가 기존 vault를 자동 제안합니다). Notion 온보딩 명령은 호스트별로 다르며 온보딩이 안내합니다.
 
 ## 안전 훅
 
@@ -91,10 +106,11 @@ flowchart LR
 - **커밋·push 자체는 막지 않습니다** — 훅은 사용자가 그걸 요청했는지 알 수 없습니다. 막는 것은 어떤 요청에서도 에이전트가 스스로 택하면 안 되는 지름길입니다.
 - 해제 옵션은 없습니다. 정말 필요하면 프롬프트에 `! <명령>`으로 직접 실행하세요.
 - 인용문 안(커밋 메시지)은 판정에서 제외하고 토큰 단위로 봅니다. `git commit -m "force push 금지"`는 통과합니다.
+- Codex CLI에서도 같은 훅이 같은 판정으로 동작합니다 (페이로드·거부 형식이 동일 — `tests/pl-guard/run-unit.sh`의 Codex 케이스로 고정). 프로젝트 훅과 달리 플러그인 훅은 설치로 신뢰됩니다. 다만 실제 세션에서 차단이 발동한 실측은 아직 없습니다.
 
 ## 레포 로컬 설정 (선택)
 
-레포에 `.claude/pl.local.md`를 두면 매 요청에 반복하던 것을 생략할 수 있습니다. 리드는 이 파일을 읽기만 하고 만들거나 고치지 않습니다.
+레포에 `.agents/pl.local.md`(권장, 호스트 중립) 또는 `.claude/pl.local.md`(기존)를 두면 매 요청에 반복하던 것을 생략할 수 있습니다. 리드는 이 파일을 읽기만 하고 만들거나 고치지 않습니다.
 
 ```markdown
 ---
@@ -107,9 +123,25 @@ protectedPaths:                    # 팀원은 절대, 리드는 명시 요청 �
 ---
 ```
 
+## 호스트 차이
+
+같은 워크플로우지만 호스트가 제공하는 것이 달라서 아래가 다릅니다. 리드는 오케스트레이터의 Platform Behavior 매핑표로 이 차이를 처리합니다.
+
+| | Claude Code | Codex CLI |
+|---|---|---|
+| 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 (병렬 스폰, 결과 반환) |
+| 팀원 간 직접 반박 (Round 2) | 팀원끼리 직접 메시지 | 리드가 중개 (재질문 → 답변 전달) |
+| 공유 태스크 목록 | 있음 (`TaskList`) | 없음 — feature 노트 Execution Ledger가 유일한 태스크 상태 |
+| 역할별 허용 도구 | 에이전트 `tools` 목록 | 없음 — `sandbox_mode`(read-only / workspace-write)로 근사, 나머지는 역할 본문의 산문 규칙 |
+| 역할 정의 설치 | 플러그인에 번들 | `install-codex.sh`로 `~/.codex/agents/`에 복사 |
+| 모델 | 프론트매터 `opus`/`sonnet` | `build_codex_agents.py`의 `MODEL_MAP`으로 변환 |
+| 진입점 암묵 호출 | `disable-model-invocation`으로 `/pl:pl` 명시 호출만 | description 기반 암묵 호출 허용 (`$pl` 또는 'PL 에이전트로' 요청) |
+| 샌드박스 | 해당 없음 | `workspace-write`는 `.git` 쓰기를 막아 커밋 요청이 실패한다 — 커밋까지 맡기려면 샌드박스 설정을 조정 |
+| 추천 조합 플러그인 | 아래 표 | 해당 없음 (Claude 마켓플레이스 전용) |
+
 ## 추천 조합 (선택)
 
-pl은 단독으로 완결이지만, 아래 플러그인들과 자연스럽게 합성됩니다. 설치는 각자 선택이고 — **없으면 pl이 자동으로 무시합니다** (조건부 참조라 에러·기능 저하 없음).
+pl은 단독으로 완결이지만 (Claude Code 한정), 아래 플러그인들과 자연스럽게 합성됩니다. 설치는 각자 선택이고 — **없으면 pl이 자동으로 무시합니다** (조건부 참조라 에러·기능 저하 없음).
 
 | 플러그인 | 합성 효과 |
 |---|---|
@@ -129,10 +161,14 @@ pl은 단독으로 완결이지만, 아래 플러그인들과 자연스럽게 �
 /plugin update pl@zz1996zz
 ```
 
+Codex CLI: `codex plugin marketplace upgrade` → `codex plugin remove pl@zz1996zz && codex plugin add pl@zz1996zz` (Codex에는 `plugin update` 커맨드가 없어 remove+add로 갱신합니다).
+
 업데이트 시 사용자 데이터(`config.json`·`pending/`)는 보존됩니다. **`uninstall`은 데이터를 삭제하므로** 갱신 용도로 쓰지 마세요 ([루트 README](../../README.md#업데이트) 참조).
 
 ## 개발
 
-- 시스템 변경 후 테스트 3종 실행: `skills/team-pl-orchestrator/scripts/`의 `test_pl_config.py` · `test_memory_note.py` · `test_pl_user_config.py`
+- 시스템 변경 후 테스트 4종 실행: `skills/team-pl-orchestrator/scripts/`의 `test_pl_config.py` · `test_memory_note.py` · `test_pl_user_config.py` · `test_build_codex_agents.py` (`build_codex_agents.py`와 그 테스트는 `tomllib` 때문에 Python 3.11 이상 — 런타임 헬퍼는 3.10으로 충분)
 - 리드 머신 전용 검사를 건너뛰려면: `PL_SKIP_MACHINE_TESTS=1`
 - 프롬프트 문서(`SKILL.md`·`references/`·`agents/`)나 `hooks/guard.sh`를 고쳤으면 레포 루트의 행동 테스트도 돌립니다: `tests/pl-guard/run-unit.sh`(훅 판정, 토큰 불필요) · `tests/pl-e2e/run-unit.sh`(E2E 판정 로직, 토큰 불필요) · `tests/pl-e2e/run-safety.sh`(실제 세션, 토큰 소모). 자세한 것은 [`tests/pl-e2e/README.md`](../../tests/pl-e2e/README.md)
+- Codex 지원 관련 테스트: `test_build_codex_agents.py` · `build_codex_agents.py --check` (매니페스트·에이전트 변환 검증, 토큰 불필요) · `tests/pl-codex/run-install-unit.sh`(설치 스크립트 단위 테스트, 토큰 불필요) · `tests/pl-e2e/run-safety-codex.sh`(실제 Codex 세션, 토큰 소모)
+- `agents/team-pl-*.md`를 고쳤으면 `build_codex_agents.py`로 `agents/codex/`를 재생성해 함께 커밋합니다.

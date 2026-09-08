@@ -4,5 +4,7 @@
   "description": "PL/테크리드 팀 오케스트레이션 워크플로우. 역할 에이전트 토론·구현·검증과 Obsidian/Notion 선택형 메모리 백엔드를 제공한다.",
   "author": {
     "name": "JeongSu"
-  }
+  },
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
 }

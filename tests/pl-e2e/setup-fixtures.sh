@@ -50,6 +50,7 @@ if [ -n "${PL_E2E_SKIP_CONFIG:-}" ]; then
   echo "fixtures: $ROOT"
   exit 0
 fi
+# Codex 러너는 PL_E2E_DATA_DIR 을 임시 CODEX_HOME/plugins/data/pl 로 넘긴다.
 DATA_DIR="${PL_E2E_DATA_DIR:-$HOME/.claude/plugins/data/pl-inline}"
 CONFIG="$DATA_DIR/config.json"
 if [ -e "$CONFIG" ]; then

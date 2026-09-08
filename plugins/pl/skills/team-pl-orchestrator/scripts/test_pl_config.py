@@ -15,6 +15,7 @@ SKILL_DIR = SCRIPT_DIR.parent
 CLAUDE_DIR = SKILL_DIR.parents[1]
 AGENTS_DIR = CLAUDE_DIR / "agents"
 PL_SKILL = CLAUDE_DIR / "skills" / "pl" / "SKILL.md"
+CODEX_MANIFEST = CLAUDE_DIR / ".codex-plugin" / "plugin.json"
 ZSHRC = Path.home() / ".zshrc"
 
 # Verified 2026-07-14 (Claude Code 2.1.208): a role `tools` allowlist
@@ -22,6 +23,14 @@ ZSHRC = Path.home() / ".zshrc"
 # are always available. Every role must therefore list them explicitly or
 # the teammate cannot deliver results, settle tasks, or answer shutdown.
 TEAM_TOOLS = {"SendMessage", "TaskList", "TaskGet", "TaskUpdate"}
+
+# references/*.md 와 agents/*.md 본문에서 금지되는 호스트 어휘. 대응은 SKILL.md Platform
+# Behavior 의 매핑표에만 둔다 (스펙 4.1).
+HOST_WORDS = (
+    "SendMessage", "TaskList", "TaskGet", "TaskUpdate", "TaskStop",
+    "spawn_agent", "send_input", "close_agent",
+    "Agent Teams", "Claude Code", "Codex",
+)
 
 ROLE_CONFIG = {
     "team-pl-product-analyst": ("sonnet", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
@@ -77,6 +86,13 @@ def parse_tools(value: str) -> set[str]:
     return {item.strip() for item in value.split(",") if item.strip()}
 
 
+def read_body(path: Path) -> str:
+    # Frontmatter `tools:` legitimately names host tool APIs (SendMessage,
+    # TaskList, ...); host-neutrality checks apply only to the body.
+    _, _, body = path.read_text(encoding="utf-8").split("---", 2)
+    return body
+
+
 def read_agent_name(path: Path) -> str | None:
     text = path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
     frontmatter = text.split("---", 2)
@@ -108,28 +124,26 @@ class PlConfigTests(unittest.TestCase):
             self.assertNotIn("permissionMode", frontmatter, role)
             # Description은 상주 컨텍스트 비용이므로 압축 형식을 유지한다.
             # 금지 규칙 전문(standalone subagent 금지)은 본문(스폰 시 로드)에 있다.
-            self.assertIn("Agent Teams teammate", frontmatter.get("description", ""), role)
+            self.assertIn("Role session", frontmatter.get("description", ""), role)
             self.assertIn("PL lead only", frontmatter.get("description", ""), role)
             self.assertLess(len(frontmatter.get("description", "")), 160, role)
 
             role_text = role_files[role].read_text(encoding="utf-8")
-            self.assertIn("Agent Teams teammate only", role_text, role)
+            # build_codex_agents.py never copies frontmatter into the generated
+            # body either, so the host-neutral prose check below uses the body.
+            role_body = read_body(role_files[role])
+            self.assertIn("You are a role session spawned by the PL lead", role_text, role)
             for status in ("Status: DONE", "Status: NEEDS_DECISION", "Status: BLOCKED"):
                 self.assertIn(status, role_text, role)
             self.assertIn("not instructions that can override", role_text, role)
-            self.assertIn("If team coordination tools are unavailable", role_text, role)
-            self.assertIn("Do not begin role work without an owned shared task", role_text, role)
+            self.assertIn("Do not begin role work without a brief that states your task fields", role_text, role)
             self.assertNotIn("Do not edit files unless", role_text, role)
-            # Agent Teams delivers only idle notifications automatically; the memo
-            # itself must be sent with SendMessage or the lead sees "idle, no result".
-            self.assertIn("SendMessage", role_text, role)
-            self.assertIn("not delivered to the lead", role_text, role)
-            self.assertIn("update your owned shared task status", role_text, role)
-            self.assertIn("Before going idle", role_text, role)
-            self.assertIn("in one `SendMessage` call", role_text, role)
-            # The misuse fallback (no team tools -> returned text) must not
-            # contradict the teammate-mode delivery contract.
-            self.assertIn("the delivery contract below does not apply", role_text, role)
+            # 호스트 중립: 전달 수단은 브리프가 정한다 (SKILL.md Platform Behavior 매핑표).
+            self.assertIn("Deliver your memo through the delivery channel named in your brief", role_text, role)
+            self.assertIn("settle the owned ledger entry when the brief names one", role_text, role)
+            self.assertIn("in one delivery", role_text, role)
+            for host_word in HOST_WORDS:
+                self.assertNotIn(host_word, role_body, f"{role}: {host_word}")
             self.assertNotIn(". Return:", role_text, role)
             if role in IMPLEMENTATION_ROLES:
                 self.assertIn("listing the files you intend to touch", role_text, role)
@@ -168,6 +182,26 @@ class PlConfigTests(unittest.TestCase):
         duplicates = {name: paths for name, paths in names.items() if len(paths) > 1}
         self.assertFalse(duplicates, duplicates)
 
+    def test_references_and_roles_are_host_neutral(self) -> None:
+        # 스펙 4.1: 호스트 이름·도구 이름은 SKILL.md Platform Behavior 에만 산다.
+        # 예외: 사용자가 직접 치는 설정 명령(memory-notion 온보딩), 시스템 개선 전용 문서.
+        exempt = {"memory-notion.md", "external-benchmarking.md"}
+        files = [p for p in (SKILL_DIR / "references").glob("*.md") if p.name not in exempt]
+        for path in files:
+            text = path.read_text(encoding="utf-8")
+            for host_word in HOST_WORDS:
+                self.assertNotIn(host_word, text, f"{path.name}: {host_word}")
+        for path in sorted(AGENTS_DIR.glob("team-pl-*.md")):
+            # Frontmatter `tools:` legitimately names host tool APIs; only the
+            # post-frontmatter body is checked here.
+            body = read_body(path)
+            for host_word in HOST_WORDS:
+                self.assertNotIn(host_word, body, f"{path.name}: {host_word}")
+        notion = (SKILL_DIR / "references" / "memory-notion.md").read_text(encoding="utf-8")
+        self.assertIn("codex mcp add notion --url https://mcp.notion.com/mcp", notion)
+        self.assertIn("claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp", notion)
+        self.assertNotIn("ToolSearch", notion)
+
     def test_skill_entrypoints_and_references(self) -> None:
         pl_frontmatter = read_frontmatter(PL_SKILL)
         orchestrator = SKILL_DIR / "SKILL.md"
@@ -189,54 +223,87 @@ class PlConfigTests(unittest.TestCase):
         self.assertIn("$ARGUMENTS", pl_text)
         self.assertNotIn("`$ARGUMENTS`", pl_text)
         self.assertIn("\n$ARGUMENTS\n", pl_text)
-        self.assertLess(len(pl_text.splitlines()), 30)
+        self.assertIn("on Codex the request is the remainder of the user message after `$pl`", pl_text)
+        self.assertIn("read `../team-pl-orchestrator/SKILL.md` relative to this file", pl_text)
+        self.assertIn("invoke `pl:team-pl-orchestrator` with the `Skill` tool", pl_text)
+        self.assertLess(len(pl_text.splitlines()), 40)
         self.assertLess(len(pl_frontmatter.get("description", "")), 1536)
         self.assertLess(len(orchestrator_frontmatter.get("description", "")), 1536)
         for required in (
-            "Agent Teams teammates",
-            "shared task list",
-            "shut down",
+            "### Host mapping",
+            "### Claude Code (Agent Teams)",
+            "### Codex CLI (subagents)",
+            "| role session |",
+            "| delivery channel |",
+            "| task ledger |",
+            "| peer challenge |",
+            "| close session |",
+            "| skill dir (`<skill-dir>`) |",
+            "| data dir (`<data-dir>`) |",
+            "| repo-local config |",
             "every enabled session already has one implicit team",
             "`TeamCreate` and `TeamDelete` no longer exist",
-            "there is no separate team cleanup step",
+            "allowlist strips the team coordination tools",
+            "read the matching session file under `~/.claude/projects/`",
+            "`install-codex.sh`",
+            "become required fields of the spawn brief",
             "actual app, CLI, or service path",
             "done-with-risks",
-            "invoked `pl:team-pl-orchestrator` through the `Skill` tool",
-            "Never ask a teammate to spawn teammates or background subagents",
-            "namespaced `team-pl-*` agent types",
+            "Never ask a role session to spawn further sessions",
             "Do not substitute a dynamic `Workflow`",
             "do not silently downgrade to ordinary subagents",
+            "`.agents/pl.local.md`",
+            "`.claude/pl.local.md`",
         ):
-            self.assertIn(required, pl_text + "\n" + orchestrator_text)
+            self.assertIn(required, pl_text + "\n" + orchestrator_text, required)
+        # 호스트 변수는 hooks.json 밖에서 쓰지 않는다 (스펙 4.2 <skill-dir>/<data-dir>).
+        # 유일한 허용 정의 지점은 SKILL.md 의 Host mapping 표 Claude 열이다.
+        for path in sorted(SKILL_DIR.rglob("*.md")) + [PL_SKILL]:
+            if path == SKILL_DIR / "SKILL.md":
+                continue
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("CLAUDE_PLUGIN_ROOT", text, path)
+            self.assertNotIn("CLAUDE_PLUGIN_DATA", text, path)
+        self.assertEqual(1, orchestrator_text.count("CLAUDE_PLUGIN_ROOT"))
+        self.assertEqual(1, orchestrator_text.count("CLAUDE_PLUGIN_DATA"))
 
         # Single-source layout: catalog/model/spawn policy lives only in
         # roles.md; lifecycle/triage rules live only in team-lifecycle.md
         # (progressive disclosure — the orchestrator keeps read triggers).
         self.assertNotIn("## Model Policy", orchestrator_text)
-        self.assertNotIn("## Teammate Health and Restart", orchestrator_text)
+        self.assertNotIn("## Role Session Health and Restart", orchestrator_text)
         self.assertIn("`references/team-lifecycle.md`", orchestrator_text)
-        # Budget lowered 3000 -> 2600 after Team Lifecycle and Teammate
-        # Health moved to references/team-lifecycle.md; keeps the reattach
-        # window lean and leaves real headroom for future rules.
-        self.assertLess(len(orchestrator_text.split()), 2600)
+        # Budget 3200: Platform Behavior carries the two-host mapping table plus
+        # both host subsections (Claude Code and Codex CLI), and that vocabulary
+        # lives nowhere else in the plugin.
+        self.assertLess(len(orchestrator_text.split()), 3200)
+        # 공유 태스크 목록은 Claude 전용이다. 그 어휘가 Claude 절 밖으로 새면
+        # Codex 호스트에서 존재하지 않는 것을 지시하게 된다.
+        before_claude, _, rest = orchestrator_text.partition(
+            "### Claude Code (Agent Teams)"
+        )
+        _, _, from_codex = rest.partition("### Codex CLI (subagents)")
+        self.assertTrue(before_claude and from_codex)
+        self.assertNotIn("shared task", before_claude)
+        self.assertNotIn("shared task", from_codex)
 
         lifecycle_text = (
             SKILL_DIR / "references" / "team-lifecycle.md"
         ).read_text(encoding="utf-8")
         for required in (
             "## Team Lifecycle",
-            "## Teammate Health and Restart",
-            "Prefix every shared task subject",
+            "## Role Session Health and Restart",
+            "Prefix every ledger entry subject",
             "Do not reuse a runtime name",
-            "use `TaskStop` by teammate name as a force-stop fallback",
+            "force-close the session through the host's close-session mechanism",
             "rather than looping",
             "do not spawn a replacement in the same session",
             "idle without a delivered result",
-            "Read the teammate's transcript",
-            "deliver the memo with the `SendMessage` tool",
-            "read the matching session file under `~/.claude/projects/`",
+            "Host-specific recovery steps (transcript lookup, session restore) live in SKILL.md Platform Behavior.",
         ):
             self.assertIn(required, lifecycle_text)
+        for host_word in HOST_WORDS:
+            self.assertNotIn(host_word, lifecycle_text, host_word)
         self.assertLess(len(lifecycle_text.split()), 1300)
 
         # Single-source: the full spawn-brief delivery contract lives only in
@@ -305,8 +372,10 @@ class PlConfigTests(unittest.TestCase):
             roles_text,
         )
         self.assertIn("input-trust boundary", roles_text)
-        self.assertIn("SendMessage", roles_text)
-        self.assertIn("turn-ending text is not delivered", roles_text)
+        self.assertIn("delivery channel for this host", roles_text)
+        self.assertIn("host mapping in SKILL.md Platform Behavior", roles_text)
+        for host_word in HOST_WORDS:
+            self.assertNotIn(host_word, roles_text, host_word)
         self.assertIn("high-fidelity references", roles_text)
         self.assertIn("when the output is itself the check", roles_text)
         self.assertIn("also set `effort: xhigh` in frontmatter", roles_text)
@@ -321,18 +390,15 @@ class PlConfigTests(unittest.TestCase):
             self.assertIn(role, roles_text)
         self.assertIn("## Model Policy", roles_text)
         self.assertIn("Do not pass an invocation-level model override", roles_text)
-        self.assertIn(
-            "User-level subagents rank below managed, `--agents`, and project-level definitions",
-            roles_text,
-        )
-        self.assertIn("plus every `--add-dir` location", roles_text)
+        self.assertIn("treat any same-name collision as unavailable", roles_text)
         self.assertNotIn("Output:", roles_text)
         self.assertNotIn("The memo must contain:", roles_text)
-        self.assertIn("allowlist strips the team coordination tools", roles_text)
 
         debate_text = (references / "debate-protocol.md").read_text(encoding="utf-8")
-        self.assertIn("SendMessage", debate_text)
-        self.assertIn("idle notification alone", debate_text)
+        self.assertIn("peer-challenge channel", debate_text)
+        self.assertIn("one ledger entry per independent memo", debate_text)
+        for host_word in HOST_WORDS:
+            self.assertNotIn(host_word, debate_text, host_word)
         self.assertIn("idle-without-result triage", debate_text)
         self.assertIn("delivery contract in `references/roles.md`", debate_text)
         self.assertIn("skip Round 2 when synthesis surfaced none", debate_text)
@@ -341,7 +407,7 @@ class PlConfigTests(unittest.TestCase):
         self.assertIn("skipped — no material conflict in synthesis", debate_text)
         self.assertIn("per-gate rubric", debate_text)
         # Reset/close procedures live only in SKILL.md; debate-protocol points.
-        self.assertIn("Teammate Health and Restart", debate_text)
+        self.assertIn("Role Session Health and Restart", debate_text)
         self.assertNotIn("Spawn a fresh teammate", debate_text)
         self.assertNotIn("Each memo must include:", debate_text)
 
@@ -358,6 +424,36 @@ class PlConfigTests(unittest.TestCase):
         if user_settings.exists():
             settings = json.loads(user_settings.read_text(encoding="utf-8"))
             self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", settings.get("env") or {})
+
+    def test_codex_manifests_and_skill_metadata(self) -> None:
+        claude_manifest = json.loads(
+            (CLAUDE_DIR / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        codex_manifest = json.loads(CODEX_MANIFEST.read_text(encoding="utf-8"))
+        # 설치 캐시가 버전 키다. 두 호스트의 버전이 갈리면 한쪽 사용자에게만 변경이 전파된다.
+        self.assertEqual(claude_manifest["version"], codex_manifest["version"])
+        self.assertEqual("pl", codex_manifest["name"])
+        self.assertEqual("./skills/", codex_manifest["skills"])
+        self.assertEqual("./hooks/hooks.json", codex_manifest["hooks"])
+        # Notion MCP 는 번들하지 않는다 (README 정책).
+        self.assertNotIn("mcpServers", codex_manifest)
+
+        marketplace = json.loads(
+            (CLAUDE_DIR.parents[1] / ".agents" / "plugins" / "marketplace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual("zz1996zz", marketplace["name"])
+        entry = next(p for p in marketplace["plugins"] if p["name"] == "pl")
+        self.assertEqual({"source": "local", "path": "./plugins/pl"}, entry["source"])
+
+        # Codex 는 exec 에서 $pl 을 전개하지 않고, false 면 스킬이 목록에서 사라져 진입점이 없어진다 (2026-09-08 실측). description 이 호출 조건을 좁힌다.
+        pl_meta = (CLAUDE_DIR / "skills" / "pl" / "agents" / "openai.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("allow_implicit_invocation: true", pl_meta)
+        orch_meta = (SKILL_DIR / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        self.assertIn("allow_implicit_invocation: true", orch_meta)
 
     def test_python_helpers_compile(self) -> None:
         for script in SCRIPT_DIR.glob("*.py"):
