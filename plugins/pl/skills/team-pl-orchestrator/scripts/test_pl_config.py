@@ -446,11 +446,11 @@ class PlConfigTests(unittest.TestCase):
         entry = next(p for p in marketplace["plugins"] if p["name"] == "pl")
         self.assertEqual({"source": "local", "path": "./plugins/pl"}, entry["source"])
 
-        # Claude 의 disable-model-invocation: true 에 대응하는 Codex 메타데이터.
+        # Codex 는 exec 에서 $pl 을 전개하지 않고, false 면 스킬이 목록에서 사라져 진입점이 없어진다 (2026-09-08 실측). description 이 호출 조건을 좁힌다.
         pl_meta = (CLAUDE_DIR / "skills" / "pl" / "agents" / "openai.yaml").read_text(
             encoding="utf-8"
         )
-        self.assertIn("allow_implicit_invocation: false", pl_meta)
+        self.assertIn("allow_implicit_invocation: true", pl_meta)
         orch_meta = (SKILL_DIR / "agents" / "openai.yaml").read_text(encoding="utf-8")
         self.assertIn("allow_implicit_invocation: true", orch_meta)
 

@@ -3,4 +3,4 @@ interface:
   short_description: "PL/테크리드 역할 팀이 토론·구현·검증하고 결정을 기억한다"
   default_prompt: "$pl <기능 요청>"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true
