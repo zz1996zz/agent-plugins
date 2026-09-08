@@ -4,7 +4,7 @@
 
 **`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 에이전트 팀이 토론하고, 구현하고, 검증하고, 결정을 기억합니다**
 
-![version](https://img.shields.io/badge/version-0.3.1-blue)
+![version](https://img.shields.io/badge/version-0.3.2-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![memory](https://img.shields.io/badge/memory-Obsidian%20%7C%20Notion-7c3aed)
