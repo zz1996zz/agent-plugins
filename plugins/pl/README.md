@@ -48,14 +48,14 @@ flowchart LR
 **Claude Code**
 
 ```
-/plugin marketplace add zz1996zz/claude-code-plugins
+/plugin marketplace add zz1996zz/agent-plugins
 /plugin install pl@zz1996zz
 ```
 
 **Codex CLI**
 
 ```
-codex plugin marketplace add zz1996zz/claude-code-plugins
+codex plugin marketplace add zz1996zz/agent-plugins
 codex plugin add pl@zz1996zz
 bash ~/.codex/plugins/cache/zz1996zz/pl/*/install-codex.sh
 ```

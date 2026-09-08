@@ -1,6 +1,6 @@
 <div align="center">
 
-# claude-code-plugins
+# agent-plugins
 
 **JeongSu의 개인 플러그인 마켓플레이스 — Claude Code · Codex CLI**
 
@@ -27,8 +27,8 @@
 
 | 호스트 | 명령 |
 |---|---|
-| Claude Code | `/plugin marketplace add zz1996zz/claude-code-plugins` → `/plugin install <플러그인 이름>@zz1996zz` |
-| Codex CLI | `codex plugin marketplace add zz1996zz/claude-code-plugins` → `codex plugin add <플러그인 이름>@zz1996zz` → 플러그인 README의 추가 단계 |
+| Claude Code | `/plugin marketplace add zz1996zz/agent-plugins` → `/plugin install <플러그인 이름>@zz1996zz` |
+| Codex CLI | `codex plugin marketplace add zz1996zz/agent-plugins` → `codex plugin add <플러그인 이름>@zz1996zz` → 플러그인 README의 추가 단계 |
 
 각 플러그인의 사용법·요구사항은 해당 플러그인 README를 참조하세요.
 
@@ -47,7 +47,7 @@ Codex CLI: `codex plugin marketplace upgrade` → `codex plugin remove pl@zz1996
 ## 레포 구조
 
 ```
-claude-code-plugins/
+agent-plugins/
 ├── .claude-plugin/marketplace.json   # 마켓플레이스 정의
 ├── .agents/plugins/marketplace.json  # Codex 마켓플레이스 정의
 ├── plugins/<이름>/                    # 각 플러그인 (자체 README 포함)
