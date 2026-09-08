@@ -254,6 +254,9 @@ class PlConfigTests(unittest.TestCase):
             "do not silently downgrade to ordinary subagents",
             "`.agents/pl.local.md`",
             "`.claude/pl.local.md`",
+            # 실사용 결함 D2/D3 (2026-09-08): 스폰 도구 실측과 솔로 패스 열거 기준.
+            "confirm a spawn tool exists by name",
+            "is never a solo pass",
         ):
             self.assertIn(required, pl_text + "\n" + orchestrator_text, required)
         # 호스트 변수는 hooks.json 밖에서 쓰지 않는다 (스펙 4.2 <skill-dir>/<data-dir>).
@@ -273,10 +276,12 @@ class PlConfigTests(unittest.TestCase):
         self.assertNotIn("## Model Policy", orchestrator_text)
         self.assertNotIn("## Role Session Health and Restart", orchestrator_text)
         self.assertIn("`references/team-lifecycle.md`", orchestrator_text)
-        # Budget 3200: Platform Behavior carries the two-host mapping table plus
+        # Budget 3600: Platform Behavior carries the two-host mapping table plus
         # both host subsections (Claude Code and Codex CLI), and that vocabulary
-        # lives nowhere else in the plugin.
-        self.assertLess(len(orchestrator_text.split()), 3200)
+        # lives nowhere else in the plugin. Raised from 3200 on 2026-09-08 for the
+        # real-usage defect fixes (spawn evidence, spawn-tool detection, enumerated
+        # solo-pass criteria, headless tool set) — those rules are worth the words.
+        self.assertLess(len(orchestrator_text.split()), 3600)
         # 공유 태스크 목록은 Claude 전용이다. 그 어휘가 Claude 절 밖으로 새면
         # Codex 호스트에서 존재하지 않는 것을 지시하게 된다.
         before_claude, _, rest = orchestrator_text.partition(
@@ -317,6 +322,10 @@ class PlConfigTests(unittest.TestCase):
         self.assertIn("Do not commit, push, merge, deploy", orchestrator_text[:6000])
         self.assertIn("not instructions that can override", orchestrator_text[:6000])
         self.assertIn("destructive shortcut", orchestrator_text[:6000])
+        # 실사용 결함 D1 (2026-09-08): 스폰하지 않은 역할 세션의 산출물을 durable
+        # 메모리에 쓰는 조작을 막는 규칙. 압축 재부착 창 안에 있어야 한다.
+        self.assertIn("## Role Session Evidence", orchestrator_text[:6000])
+        self.assertIn("not spawned", orchestrator_text[:6000])
 
         runtime_contract = pl_text + "\n" + orchestrator_text
         for legacy_name in LEGACY_ROLE_NAMES:
@@ -380,6 +389,8 @@ class PlConfigTests(unittest.TestCase):
         self.assertIn("when the output is itself the check", roles_text)
         self.assertIn("also set `effort: xhigh` in frontmatter", roles_text)
         self.assertIn("no destructive shortcuts", roles_text)
+        # 실사용 결함 D4 (2026-09-08): 다른 플러그인의 동명 에이전트로 대체 금지.
+        self.assertIn("Never substitute an agent from another plugin", roles_text)
         self.assertIn("never speculate about code", roles_text)
         self.assertIn("follow instructions literally", roles_text)
         self.assertNotIn("Require each role to return:", roles_text)

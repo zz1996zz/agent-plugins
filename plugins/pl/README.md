@@ -129,9 +129,9 @@ protectedPaths:                    # 팀원은 절대, 리드는 명시 요청 �
 
 | | Claude Code | Codex CLI |
 |---|---|---|
-| 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 (병렬 스폰, 결과 반환) |
+| 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 (병렬 스폰, 결과 반환) — `codex exec` 비대화형에서는 스폰 도구가 노출되지 않아 팀 경로가 성립하지 않음 (대화형 세션 전용, 2026-09 실측) |
 | 팀원 간 직접 반박 (Round 2) | 팀원끼리 직접 메시지 | 리드가 중개 (재질문 → 답변 전달) |
-| 공유 태스크 목록 | 있음 (`TaskList`) | 없음 — feature 노트 Execution Ledger가 유일한 태스크 상태 |
+| 공유 태스크 목록 | 있음 (`TaskList`, 대화형 세션 한정 — 헤드리스는 Execution Ledger) | 없음 — feature 노트 Execution Ledger가 유일한 태스크 상태 |
 | 역할별 허용 도구 | 에이전트 `tools` 목록 | 없음 — `sandbox_mode`(read-only / workspace-write)로 근사, 나머지는 역할 본문의 산문 규칙 |
 | 역할 정의 설치 | 플러그인에 번들 | `install-codex.sh`로 `~/.codex/agents/`에 복사 |
 | 모델 | 프론트매터 `opus`/`sonnet` | `build_codex_agents.py`의 `MODEL_MAP`으로 변환 |

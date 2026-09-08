@@ -26,11 +26,12 @@ During work:
 At completion or cancellation:
 
 1. Confirm no required task remains pending or in progress.
-2. Collect concise outputs and update the feature note.
-3. Ask every remaining role session to close by runtime name. If a role session rejects because work is active, resolve the task or delete it as obsolete and record the abandonment, then retry.
-4. Wait a bounded time for close acknowledgement. If the ledger entry is settled and no required operation is still running, force-close the session through the host's close-session mechanism and confirm it stopped. Record graceful closes, force-closes, and any unconfirmed timeout separately.
-5. Do not hand-clean session state; the host owns cleanup and retention.
-6. Leave no idle role sessions or unsettled ledger entries after the feature is closed. An unconfirmed stop prevents `done` and must be reported as `done-with-risks` when the implementation is otherwise complete.
+2. For every name recorded under Spawned, confirm you can quote that session's delivered text; a name you cannot quote was never a session and must be rewritten as `not spawned` with the reason.
+3. Collect concise outputs and update the feature note.
+4. Ask every remaining role session to close by runtime name. If a role session rejects because work is active, resolve the task or delete it as obsolete and record the abandonment, then retry.
+5. Wait a bounded time for close acknowledgement. If the ledger entry is settled and no required operation is still running, force-close the session through the host's close-session mechanism and confirm it stopped. Record graceful closes, force-closes, and any unconfirmed timeout separately.
+6. Do not hand-clean session state; the host owns cleanup and retention.
+7. Leave no idle role sessions or unsettled ledger entries after the feature is closed. An unconfirmed stop prevents `done` and must be reported as `done-with-risks` when the implementation is otherwise complete.
 
 ## Role Session Health and Restart
 
