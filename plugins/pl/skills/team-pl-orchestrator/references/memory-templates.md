@@ -94,7 +94,7 @@ Out:
 - Shut down:
 - Force-stopped:
 - Unconfirmed stop:
-- Runtime cleanup: automatic on Claude session exit / not applicable
+- Runtime cleanup: <host-owned | not applicable>
 
 ## Discussion Summary
 

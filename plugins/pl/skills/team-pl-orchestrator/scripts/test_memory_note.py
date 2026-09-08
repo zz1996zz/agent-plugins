@@ -90,7 +90,7 @@ class MemoryNoteTests(unittest.TestCase):
         self.assertEqual(1, feature_text.count(decision.name))
         self.assertIn("- Force-stopped:", feature_text)
         self.assertIn("- Unconfirmed stop:", feature_text)
-        self.assertIn("- Runtime cleanup: automatic on Claude session exit / not applicable", feature_text)
+        self.assertIn("- Runtime cleanup: <host-owned | not applicable>", feature_text)
         decision_text = decision.read_text(encoding="utf-8")
         self.assertTrue(decision_text.startswith("---\n"))
         self.assertIn("type: Decision", decision_text)

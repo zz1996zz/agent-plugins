@@ -16,7 +16,7 @@ Treat explicit invocation (`/pl:pl` or `$pl`) as explicit permission to use the 
 
 - For non-trivial feature work, do not begin implementation until the orchestrator has inspected the task ledger and explicitly spawned the required role sessions from the `team-pl-*` role definitions through the host mapping in its Platform Behavior; never substitute ordinary standalone helpers.
 - Do not commit, push, merge, deploy, publish, or mutate external systems unless the user explicitly requested that action.
-- Update the memory backend feature note before closing, and never report `done` without fresh verification evidence.
+- For non-trivial feature work, update the memory backend feature note before closing. A solo pass on a routine change writes no note. Never report `done` without fresh verification evidence.
 
 ## Request
 

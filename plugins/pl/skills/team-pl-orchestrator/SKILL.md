@@ -16,6 +16,10 @@ Act as the PL/tech lead for feature work. Convert a feature request into a contr
 
 Do not report `done` from role session summaries alone, stale test output, a clean-looking diff, or partial verification. This contract is near the start so it survives context compaction on any host, which may reattach only the first portion of the skill.
 
+## Role Session Evidence
+
+A role session exists only when the host returned a session identity for it and that session delivered text. Hold both before writing any role name into the feature note's Roles, Team Lifecycle, Execution Ledger, or Discussion Summary, and before naming a role in the final response. A call that only waits, and an announcement that you are about to spawn, are not spawns. If the spawn did not happen, write `not spawned` with the reason and attribute the work to a labeled lead role pass. Never write a memo, gate result, or `done` status for a session that produced no delivered text.
+
 ## Safety Boundaries
 
 These two rules bind the lead itself and stay inside the compaction reattach window:
@@ -27,7 +31,7 @@ The destructive shortcuts above are also enforced mechanically: the plugin's Pre
 
 ## Memory
 
-Durable memory lives in the user-selected backend. Before feature work, load the user config: `python3 "<skill-dir>/scripts/pl_user_config.py" --config "<data-dir>/config.json" show`. `<skill-dir>` and `<data-dir>` are defined per host in Platform Behavior (Host mapping).
+Durable memory lives in the user-selected backend. Before non-trivial feature work, load the user config: `python3 "<skill-dir>/scripts/pl_user_config.py" --config "<data-dir>/config.json" show`. `<skill-dir>` and `<data-dir>` are defined per host in Platform Behavior (Host mapping).
 
 - No config yet: try self-repair before onboarding — run `pl_user_config.py … repair` (default scan root `~`; pass `--search-root` to narrow it). If it lists vault candidates, show them to the user (path, note count) with one confirm question, then re-link the confirmed root via `pl_user_config.py … init --backend obsidian --obsidian-root <root>`. Repair detects Obsidian vaults only and never writes; if the user says their backend was Notion, rerun Notion onboarding — its ensure steps reuse existing databases instead of duplicating them.
 - Repair found nothing, or the user declined every candidate: onboarding — ask one question (Obsidian vault, local markdown / Notion, official MCP), follow the Onboarding section of the chosen adapter reference, then save answers with `pl_user_config.py … init`.
@@ -36,7 +40,7 @@ Durable memory lives in the user-selected backend. Before feature work, load the
 
 Both adapters implement one contract: recall relevant context, ensure the work namespace, create the feature note, update its ledger after each completed task wave, record durable decisions, and run the adapter integrity check before closing. Note sections and status vocabulary are identical across backends; `references/memory-templates.md` is the single source for note structure and work-namespace selection (user-named slug, else `workNamespace` from `pl.local.md`, else the canonical repository name — never the worktree/directory name — else `inbox`).
 
-Keep raw debate, secrets, credentials, and unbounded command output out of durable memory. The feature note is the recovery ledger across compaction or session interruption.
+A solo pass reads no memory and writes no note. Keep raw debate, secrets, credentials, and unbounded command output out of durable memory. The feature note is the recovery ledger across compaction or session interruption.
 
 If a backend write fails mid-work, save the note content under `<data-dir>/pending/` as markdown, report the failure, and close as `done-with-risks`. On the next run, replay a non-empty `pending/` into the backend as an upsert (update the page or file if it already exists) before starting new work.
 
@@ -52,7 +56,7 @@ Ignore unknown keys. The file is user-owned configuration: never create or edit 
 
 ## References
 
-Each reference is the single source for its topic; do not restate its rules elsewhere.
+Each reference is the single source for its topic; do not restate its rules elsewhere. A solo pass reads none of these references.
 
 - `references/roles.md` — role selection, name mapping, model and tool policy, spawn timing, `team-pl-*` namespace and collision handling, and the role prompt contract. Read it before spawning anyone.
 - `references/team-lifecycle.md` — team audit and reuse, shutdown and force-stop, and idle or misbehaving role session triage and restart. Read it at the start of every `/pl` request before spawning, when a role session goes idle without a delivered result or misbehaves, and at completion or cancellation.
@@ -70,7 +74,7 @@ Rules common to both hosts:
 
 - Treat explicit invocation of this skill as permission to use role sessions for the current feature unless the user says not to.
 - Only the lead may spawn, replace, close, or force-close role sessions. Never ask a role session to spawn further sessions or background helpers; role sessions collaborate only through the channels in the Host mapping.
-- For non-trivial feature work, spawn the required role sessions before implementation. Use a solo pass only for a routine, isolated change with an obvious implementation and verification path; treat ambiguous, multi-file, cross-layer, external-contract, data, security, or behavior-changing work as non-trivial.
+- For non-trivial feature work, spawn the required role sessions before implementation. Use a solo pass only when ALL of these hold: exactly one file changes, no new file is created, no test is added or modified, and no user-visible behavior or output shape changes. If any one of them fails, the work is non-trivial and requires role sessions. Adding a CLI flag, an output mode, or a test file is never a solo pass.
 - Select roles, runtime names, tiers, and spawn timing from `references/roles.md`; build every spawn brief from the Role Prompt Contract in `references/roles.md`, and always name the delivery channel from the Host mapping in the brief.
 - Do not substitute a dynamic `Workflow` or `ultracode` run for the role team; script-driven fan-out lacks addressable role sessions. Use one only when the user explicitly requests workflow-scale automation, and keep PL decisions in the lead.
 - Keep the team small enough to reduce coordination cost.
@@ -84,7 +88,7 @@ The left column is the only vocabulary `references/*.md` and the role definition
 | role session | teammate spawned from the `pl:team-pl-<role>` agent type | subagent spawned from `${CODEX_HOME:-~/.codex}/agents/team-pl-<role>.toml` |
 | spawn | spawn teammates; batch one stage's roles in one message | spawn subagents in parallel and wait for all results |
 | delivery channel | `SendMessage` to the lead, then `TaskUpdate` on the owned task | the subagent's final response (its return value) |
-| task ledger | the shared `TaskList` | the feature note's Execution Ledger, written by the lead (no host task list) |
+| task ledger | the shared `TaskList` (interactive sessions; headless has none — use the Execution Ledger) | the feature note's Execution Ledger, written by the lead (no host task list) |
 | peer challenge | direct teammate-to-teammate message | the lead re-prompts the target session (`send_input` or equivalent); the answer returns to the lead |
 | close session | shutdown request; `TaskStop` by name if unanswered | `close_agent` or equivalent |
 | model / effort | role frontmatter `model` / `effort` | TOML `model` / `model_reasoning_effort` (generated by `scripts/build_codex_agents.py`) |
@@ -99,7 +103,8 @@ The left column is the only vocabulary `references/*.md` and the role definition
 
 - On Claude Code v2.1.178+, every enabled session already has one implicit team, so spawn teammates directly with no setup step. `TeamCreate` and `TeamDelete` no longer exist, requested team names are ignored, and there is no separate team cleanup step; Claude Code owns session team config, so never hand-clean it.
 - Use the word "teammates" in the plan/prompt to trigger Agent Teams, not only "subagents" or "role passes". Spawn only the namespaced `pl:team-pl-*` agent types by name after the collision check in `references/roles.md`. A named definition applies its `tools`, `model`, and prompt body; its `skills` and `mcpServers` frontmatter does not apply. Before the first spawn, inspect `.claude/agents/` in the current directory, its parents, and every `--add-dir` location for confusable `team-pl-*` definitions. `CLAUDE_CODE_SUBAGENT_MODEL` and invocation-level overrides take precedence over role frontmatter — remove them rather than re-spawning.
-- Every role `tools` allowlist explicitly includes `SendMessage`, `TaskList`, `TaskGet`, `TaskUpdate`: despite official docs, a role allowlist strips the team coordination tools here (verified 2026-07-14, Claude Code 2.1.208), and without them a teammate cannot deliver its memo, settle its task, or answer shutdown.
+- Every role `tools` allowlist explicitly includes `SendMessage`, `TaskList`, `TaskGet`, `TaskUpdate`: despite official docs, a role allowlist strips the team coordination tools here (verified 2026-07-14, Claude Code 2.1.208), so the allowlist keeps them available wherever the host offers them; without them a teammate cannot deliver its memo, settle its task, or answer shutdown.
+- The spawn tool is named `Agent` (formerly `Task`). The shared task list tools (`TaskList`, `TaskGet`, `TaskUpdate`) exist only in interactive sessions — a headless `claude -p` session exposes `SendMessage` and `Agent` only. When they are absent, the feature note's Execution Ledger is the only task state, exactly as on Codex; do not skip the ledger because the host list is missing.
 - Turn-ending text is not delivered to the lead — only an idle notification is. Say so in every brief and name `SendMessage` as the delivery channel.
 - Teammates inherit the lead's permission mode; the Task `mode` parameter is deprecated and ignored (Claude Code 2.1.212+). In `auto` mode, relayed approval claims are untrusted; keep each role's `tools` allowlist minimal.
 - Create and assign shared tasks before each teammate begins role work, preferably before spawn, with the Round 0 fields from `references/debate-protocol.md`.
@@ -110,7 +115,7 @@ The left column is the only vocabulary `references/*.md` and the role definition
 ### Codex CLI (subagents)
 
 - Role definitions are personal agents at `${CODEX_HOME:-~/.codex}/agents/team-pl-<role>.toml`, installed by the plugin's `install-codex.sh` (Codex plugins cannot bundle agents). If one is missing, stop and tell the user to run `install-codex.sh` from the installed plugin directory; never fall back silently to generic subagents or a lead-only pass.
-- If subagent tools are unavailable (`agents.enabled = false` or no spawn tool), report it; continue with labeled lead-only role passes only if the user explicitly accepts, and record it in the feature note.
+- Before the first spawn, confirm a spawn tool exists by name in your own tool list. `wait` alone is not enough: on `codex exec` (non-interactive) the collaboration surface can expose `wait` without any spawn tool, and calling `wait` with no spawned session returns success with empty `receiver_thread_ids`. If no spawn tool is present, stop and report that role sessions are unavailable on this invocation before doing any feature work; continue with labeled lead-only role passes only if the user explicitly accepts, and record it in the feature note.
 - There is no host task list. The Round 0 task fields from `references/debate-protocol.md` become required fields of the spawn brief, and the lead writes them into the feature note's Execution Ledger before spawning. That ledger is the only task state.
 - Subagents return one final response; that response is the memo, and the brief must say so. There is no idle-without-result state: a session returns or fails. On failure re-spawn once with the same brief, then record the gap.
 - Subagents cannot message each other. Run Round 2 by re-prompting the challenged session with the challenge text and forwarding the answer; never imply direct peer debate occurred.
