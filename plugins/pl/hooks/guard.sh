@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pl PreToolUse guard. SKILL.md 의 Safety Boundaries 가 산문으로 금지한 파괴적 지름길을
 # 기계적으로 막는다: force-push, reset --hard, clean -f, --no-verify(와 core.hooksPath 우회),
-# stash drop/clear, branch -D.
+# stash drop/clear, branch -D, 그리고 미커밋 변경을 폐기하는 restore·checkout -- <path>.
 #
 # 커밋·push 자체는 막지 않는다 — 훅은 사용자가 그걸 요청했는지 알 수 없다. 여기서 막는 것은
 # 어떤 요청에서도 에이전트가 스스로 택하면 안 되는 지름길이다. 사용자가 진짜 원하면 프롬프트에서
@@ -81,6 +81,39 @@ while IFS= read -r raw; do
           -[a-zA-Z]*) case "$t" in *f*) deny "clean -f(추적되지 않은 파일 삭제)" ;; esac ;;
         esac
       done ;;
+    restore)
+      # `git restore <path>` 는 reset --hard 와 같은 급의 소실이다 — 워킹트리의 미커밋 변경이
+      # 사라진다. 인덱스만 되돌리는 `--staged` 단독은 워킹트리를 건드리지 않으므로 통과시킨다.
+      staged=0; worktree=0; source=0; pathish=0
+      for t in ${rest[@]+"${rest[@]}"}; do
+        case "$t" in
+          --staged) staged=1 ;;
+          --worktree) worktree=1 ;;
+          --source|--source=*) source=1 ;;
+          --) pathish=1 ;;
+          --*) ;;
+          -[a-zA-Z]*)
+            case "$t" in *S*) staged=1 ;; esac
+            case "$t" in *W*) worktree=1 ;; esac ;;
+          *) pathish=1 ;;
+        esac
+      done
+      if [ "$staged" = 1 ] && [ "$worktree" = 0 ] && [ "$source" = 0 ]; then
+        :
+      elif [ "$pathish" = 1 ] || [ "$source" = 1 ] || [ "$worktree" = 1 ]; then
+        deny "미커밋 변경 폐기(restore)"
+      fi ;;
+    checkout)
+      # 브랜치 전환(`git checkout <branch>`, `-b`, `-`)은 통과. pathspec 형태
+      # (`git checkout -- <path>`, `git checkout HEAD -- <path>`, `git checkout .`)는 폐기다.
+      dashdash=0; nargs=0; first=""
+      for t in ${rest[@]+"${rest[@]}"}; do
+        [ "$t" = "--" ] && dashdash=1
+        nargs=$((nargs+1))
+        [ "$nargs" = 1 ] && first="$t"
+      done
+      [ "$dashdash" = 1 ] && deny "미커밋 변경 폐기(checkout -- <path>)"
+      [ "$nargs" = 1 ] && [ "$first" = "." ] && deny "미커밋 변경 폐기(checkout .)" ;;
     stash)
       case "${rest[0]:-}" in drop|clear) deny "stash ${rest[0]}(보관된 작업 삭제)" ;; esac ;;
     branch)

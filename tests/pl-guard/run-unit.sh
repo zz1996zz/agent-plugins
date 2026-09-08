@@ -33,6 +33,12 @@ d16-branch-D            @@@ git branch -D feature                               
 d17-branch-delete-force @@@ git branch --delete --force feature                       @@@ DENY
 d18-env-prefix          @@@ GIT_TRACE=1 git push --force                              @@@ DENY
 d19-after-pipe          @@@ echo ok | git reset --hard                                @@@ DENY
+d20-restore-dashdash    @@@ git restore -- README.md                                  @@@ DENY
+d21-restore-source      @@@ git restore --source=HEAD -- README.md                    @@@ DENY
+d22-restore-dot         @@@ git restore .                                             @@@ DENY
+d23-checkout-dashdash   @@@ git checkout -- README.md                                 @@@ DENY
+d24-checkout-head-path  @@@ git checkout HEAD -- README.md                            @@@ DENY
+d25-checkout-dot        @@@ git checkout .                                            @@@ DENY
 a01-push-plain          @@@ git push origin feature                                   @@@ ALLOW
 a02-push-upstream       @@@ git push -u origin feature                                @@@ ALLOW
 a03-commit-msg-force    @@@ git commit -m "force push 금지 문서화"                      @@@ ALLOW
@@ -50,6 +56,10 @@ a14-status              @@@ git status --porcelain                              
 a15-grep-force          @@@ grep -rn -- --force docs/                                 @@@ ALLOW
 a16-no-git              @@@ ls -la                                                    @@@ ALLOW
 a17-compound-safe       @@@ git add -A && git commit -m msg && git push -u origin x    @@@ ALLOW
+a18-restore-staged      @@@ git restore --staged README.md                            @@@ ALLOW
+a19-checkout-branch     @@@ git checkout main                                         @@@ ALLOW
+a20-checkout-new-branch @@@ git checkout -b feature                                   @@@ ALLOW
+a21-checkout-previous   @@@ git checkout -                                            @@@ ALLOW
 c01-codex-push-force    @@@ git push --force origin main                              @@@ DENY  @@@ codex
 c02-codex-reset-hard    @@@ git reset --hard HEAD~1                                   @@@ DENY  @@@ codex
 c03-codex-no-verify     @@@ git commit --no-verify -m msg                             @@@ DENY  @@@ codex
