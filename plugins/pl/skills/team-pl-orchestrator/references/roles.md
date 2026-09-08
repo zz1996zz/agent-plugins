@@ -60,7 +60,7 @@ A role runs at the lead's effort when a wrong output is caught downstream, and o
 
 Smaller lead models make role sessions follow instructions literally and not silently generalize from one item to another; state each instruction's scope explicitly in their briefs (for example, "apply to every module, not only the first").
 
-Do not create per-model role variants. Invocation-level or host-level subagent model overrides would break inheritance — remove them rather than working around them.
+Do not create per-model role variants. Only an invocation-level model override breaks inheritance — never pass one when spawning a role; host-level default-model settings do not apply to definitions that name their model explicitly.
 
 ## Spawn Timing
 

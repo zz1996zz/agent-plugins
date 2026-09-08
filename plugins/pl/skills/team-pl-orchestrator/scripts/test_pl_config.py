@@ -418,7 +418,7 @@ class PlConfigTests(unittest.TestCase):
             self.assertIn(role, roles_text)
         self.assertIn("## Model Policy", roles_text)
         self.assertIn("inherit", roles_text)
-        self.assertIn("would break inheritance", roles_text)
+        self.assertIn("breaks inheritance", roles_text)
         self.assertIn("treat any same-name collision as unavailable", roles_text)
         self.assertNotIn("Output:", roles_text)
         self.assertNotIn("The memo must contain:", roles_text)
