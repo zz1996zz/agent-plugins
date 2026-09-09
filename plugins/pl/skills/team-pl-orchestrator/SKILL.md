@@ -89,8 +89,8 @@ The left column is the only vocabulary `references/*.md` and the role definition
 | spawn | spawn teammates; batch one stage's roles in one message | `spawn_agent` with `agent_type: "team-pl-<role>"`, in parallel, then `wait_agent` for all results |
 | delivery channel | `SendMessage` to the lead, then `TaskUpdate` on the owned task | the subagent's final response (its return value) |
 | task ledger | the shared `TaskList` (interactive sessions; headless has none — use the Execution Ledger) | the feature note's Execution Ledger, written by the lead (no host task list) |
-| peer challenge | direct teammate-to-teammate message | the lead re-prompts the target session (`send_input` or equivalent); the answer returns to the lead |
-| close session | shutdown request; `TaskStop` by name if unanswered | `close_agent` or equivalent |
+| peer challenge | direct teammate-to-teammate message | the lead re-prompts the target session (`followup_task` or equivalent); the answer returns to the lead |
+| close session | shutdown request; `TaskStop` by name if unanswered | `interrupt_agent` or equivalent |
 | model / effort | role frontmatter `model: inherit` (lead's model) / `effort` (check roles `xhigh`) | TOML omits `model` (inherits the parent session's model); `model_reasoning_effort` set only for check roles |
 | skill dir (`<skill-dir>`) | `${CLAUDE_PLUGIN_ROOT}/skills/team-pl-orchestrator` | the `skills/team-pl-orchestrator` directory that contains the orchestrator SKILL.md — never `skills/pl` (the alias). If `<skill-dir>/scripts/memory_note.py` is not there, locate it with `find <plugin-root> -name memory_note.py` before treating the helper as unavailable |
 | data dir (`<data-dir>`) | `${CLAUDE_PLUGIN_DATA}` | `${CODEX_HOME:-~/.codex}/plugins/data/pl` |

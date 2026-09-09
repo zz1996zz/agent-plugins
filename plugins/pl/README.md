@@ -4,7 +4,7 @@
 
 **`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 에이전트 팀이 토론하고, 구현하고, 검증하고, 결정을 기억합니다**
 
-![version](https://img.shields.io/badge/version-0.4.1-blue)
+![version](https://img.shields.io/badge/version-0.4.2-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![memory](https://img.shields.io/badge/memory-Obsidian%20%7C%20Notion-7c3aed)
@@ -20,11 +20,11 @@ PL/테크리드 오케스트레이션 플러그인입니다. 기능 요청을 �
 
 ```mermaid
 flowchart LR
-    A(["/pl:pl 기능 요청"]) --> B["인테이크<br/>+ 메모리 맥락 복원"]
+    A(["/pl:pl · $pl 기능 요청"]) --> B["인테이크<br/>+ 메모리 맥락 복원"]
     B --> C{"규모 판단"}
     C -->|"routine"| D["솔로 패스"]
-    C -->|"기능 작업"| E["역할 팀 스폰<br/>(pl:team-pl-*)"]
-    E --> F["역할별 독립 메모<br/>→ 종합 → 직접 반박"]
+    C -->|"기능 작업"| E["역할 팀 스폰<br/>(team-pl-*)"]
+    E --> F["역할별 독립 메모<br/>→ 종합 → 반박(Round 2)"]
     F --> G["PL 결정"]
     G --> H["구현 + 검증"]
     H --> I["리뷰 게이트"]
@@ -84,7 +84,7 @@ $pl <기능 요청>           (Codex CLI)
 | 선택지 | 준비물 | 온보딩에서 할 일 |
 |---|---|---|
 | **Obsidian vault** (로컬 markdown) | 없음 (Obsidian 앱 불필요) | 저장 경로 1개 답하기 |
-| **Notion** (공식 MCP, source of truth) | Notion 계정 | 공식 MCP 서버 1회 추가(온보딩이 명령 안내) + `/mcp` OAuth + 메모리 root 페이지 URL 붙여넣기 |
+| **Notion** (공식 MCP, source of truth) | Notion 계정 | 공식 MCP 서버 1회 추가(온보딩이 호스트별 명령 안내) + OAuth(Claude `/mcp`, Codex `codex mcp login notion`) + 메모리 root 페이지 URL 붙여넣기 |
 
 - Notion 선택 시 root 페이지 아래 **Features/Decisions 데이터베이스**와 **Works 페이지**가 자동 생성됩니다.
 - 백엔드 변경: `<data-dir>/config.json` 삭제 후 재온보딩 (기존 데이터 이관은 미지원).
@@ -136,16 +136,16 @@ protectedPaths:                    # 팀원은 절대, 리드는 명시 요청 �
 | 역할 세션 | Agent Teams 팀원 (장기 실행, 상호 메시징) | 서브에이전트 — `codex exec` 에서 `spawn_agent`(인자 `agent_type`·`task_name`·`message`·`fork_turns`), `wait_agent`, `list_agents` 로 스폰·대기 (2026-09 실측). `unified_exec` 의 `wait` 는 협업 도구가 아니다 |
 | 팀원 간 직접 반박 (Round 2) | 팀원끼리 직접 메시지 | 리드가 중개 (재질문 → 답변 전달) |
 | 공유 태스크 목록 | 있음 (`TaskList`, 대화형 세션 한정 — 헤드리스는 Execution Ledger) | 없음 — feature 노트 Execution Ledger가 유일한 태스크 상태 |
-| 역할별 허용 도구 | 에이전트 `tools` 목록 | 없음 — `sandbox_mode`(read-only / workspace-write)로 근사, 나머지는 역할 본문의 산문 규칙 |
+| 역할별 허용 도구 | 에이전트 `tools` 목록 | 없음 — TOML `sandbox_mode`는 부모 세션이 샌드박스를 지정하면 자식에 적용되지 않음(2026-09 실측). 역할 본문과 브리프의 편집 금지 문장이 유일한 경계 |
 | 역할 정의 설치 | 플러그인에 번들 | `install-codex.sh`로 `~/.codex/agents/`에 복사 |
-| 모델 | 리드 모델 상속 (`model: inherit`), 검문소 역할만 effort xhigh | 동일 — TOML 에 model 없음, 검문소 역할만 `model_reasoning_effort = xhigh` |
+| 모델 | 리드 모델 상속 (`model: inherit`), 검사(check) 역할 5개만 effort xhigh | 동일 — TOML 에 model 없음, 검사 역할만 `model_reasoning_effort = xhigh` |
 | 진입점 암묵 호출 | `disable-model-invocation`으로 `/pl:pl` 명시 호출만 | description 기반 암묵 호출 허용 (`$pl` 또는 'PL 에이전트로' 요청) |
-| 샌드박스 | 해당 없음 | `workspace-write`는 `.git` 쓰기를 막아 커밋 요청이 실패한다 — 커밋까지 맡기려면 샌드박스 설정을 조정 |
+| 샌드박스 | 해당 없음 | `workspace-write`는 `.git` 쓰기를 막아 커밋 요청이 실패한다 — 커밋까지 맡기려면 샌드박스 설정을 조정. 부모가 full-access면 읽기 전용 역할도 full-access로 돌고, 리드가 그 사실을 노트 `Role sandbox:`에 기록 |
 | 추천 조합 플러그인 | 아래 표 | 해당 없음 (Claude 마켓플레이스 전용) |
 
 ## 추천 조합 (선택)
 
-pl은 단독으로 완결이지만 (Claude Code 한정), 아래 플러그인들과 자연스럽게 합성됩니다. 설치는 각자 선택이고 — **없으면 pl이 자동으로 무시합니다** (조건부 참조라 에러·기능 저하 없음).
+pl은 단독으로 완결입니다. Claude Code에서는 아래 플러그인들과 자연스럽게 합성됩니다 (Codex 마켓플레이스에는 없음). 설치는 각자 선택이고 — **없으면 pl이 자동으로 무시합니다** (조건부 참조라 에러·기능 저하 없음).
 
 | 플러그인 | 합성 효과 |
 |---|---|
