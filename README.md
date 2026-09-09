@@ -39,10 +39,10 @@
 /plugin update <플러그인 이름>@zz1996zz
 ```
 
-Codex CLI: `codex plugin marketplace upgrade` → `codex plugin remove pl@zz1996zz && codex plugin add pl@zz1996zz` (Codex에는 `plugin update` 커맨드가 없어 remove+add로 갱신합니다).
+Codex CLI: `codex plugin marketplace upgrade` → `codex plugin remove <플러그인 이름>@zz1996zz && codex plugin add <플러그인 이름>@zz1996zz` (Codex에는 `plugin update` 커맨드가 없어 remove+add로 갱신합니다).
 
 - 사설 마켓플레이스는 자동 업데이트가 기본으로 꺼져 있습니다 — 위 두 커맨드로 직접 당겨옵니다.
-- **⚠️ `plugin uninstall` 주의**: 플러그인의 사용자 데이터 디렉토리(`~/.claude/plugins/data/<플러그인>-zz1996zz/` — 설정·대기 큐)가 함께 삭제됩니다(실측). 갱신은 반드시 위의 update 경로로 하고, 부득이 uninstall 할 때는 데이터 디렉토리를 먼저 백업하세요.
+- **⚠️ `plugin uninstall` 주의**: 플러그인의 사용자 데이터 디렉토리(`~/.claude/plugins/data/<플러그인>-zz1996zz/` — 설정·대기 큐)가 함께 삭제됩니다(실측). 갱신은 반드시 위의 update 경로로 하고, 부득이 uninstall 할 때는 데이터 디렉토리를 먼저 백업하세요. Codex의 데이터 디렉토리(`~/.codex/plugins/data/<플러그인>/`)는 플러그인 캐시 밖이라 `codex plugin remove`에도 남습니다.
 
 ## 레포 구조
 
