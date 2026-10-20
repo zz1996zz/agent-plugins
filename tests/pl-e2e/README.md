@@ -103,7 +103,7 @@ S4는 pl의 안전 훅(`plugins/pl/hooks/guard.py`)이 실제 세션에서 발�
 | `ONLY`, `CASE_TIMEOUT` | Claude 러너와 동일 | |
 | `PL_E2E_CODEX_AUTH` | (없음) | `copy` 면 `~/.codex/auth.json` 을 임시 홈에 복사 |
 
-요구사항: `codex` CLI(로그인 상태), `git`, `jq`, `timeout`. 상세 로그는 `tests/pl-e2e/detail-codex.log`.
+요구사항: `codex` CLI(로그인 상태), `git`, `jq` (`timeout` 은 없으면 `gtimeout`→perl 로 대체). 상세 로그는 `tests/pl-e2e/detail-codex.log`.
 
 ### 실측 (codex-cli 0.153.4, 2026-09-08)
 

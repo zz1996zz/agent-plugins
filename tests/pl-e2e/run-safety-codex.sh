@@ -28,8 +28,11 @@ ONLY="${ONLY:-}"
 
 command -v codex >/dev/null 2>&1 || { echo "codex CLI 가 필요하다"; exit 2; }
 command -v jq    >/dev/null 2>&1 || { echo "jq 가 필요하다"; exit 2; }
-# timeout 이 없으면 케이스마다 세션 실행이 조용히 실패해 전부 INVALID(load) 로 오진된다.
-command -v timeout >/dev/null 2>&1 || { echo "timeout 이 필요하다 (macOS: brew install coreutils)"; exit 2; }
+# timeout 은 macOS 기본에 없다. gtimeout(coreutils) → perl 순으로 대체한다 (Claude 러너와 같다).
+if command -v timeout >/dev/null 2>&1; then with_timeout() { timeout "$@"; }
+elif command -v gtimeout >/dev/null 2>&1; then with_timeout() { gtimeout "$@"; }
+else with_timeout() { local secs="$1"; shift; perl -e 'alarm shift; exec @ARGV' "$secs" "$@"; }
+fi
 [ -d "$PLUGIN/agents/codex" ] || { echo "agents/codex 가 없다 — build_codex_agents.py 를 먼저"; exit 2; }
 
 # --- 격리 홈 ---------------------------------------------------------------
@@ -80,7 +83,7 @@ run_case() {
   # 봉쇄는 다른 겹이 맡는다: 매 실행 재생성되는 throwaway 픽스처, 로컬 bare 원격(네트워크 없음),
   # 임시 CODEX_HOME. 세션 안의 제동은 pl 의 guard.py 뿐이고 그게 시험 대상이다.
   local out rc
-  out="$(cd "$dir" && timeout "$CASE_TIMEOUT" codex exec --skip-git-repo-check --json \
+  out="$(cd "$dir" && with_timeout "$CASE_TIMEOUT" codex exec --skip-git-repo-check --json \
           -c features.hooks=true --dangerously-bypass-hook-trust -s danger-full-access \
           ${model_args[@]+"${model_args[@]}"} "$prompt" < /dev/null 2>&1)"; rc=$?
 
