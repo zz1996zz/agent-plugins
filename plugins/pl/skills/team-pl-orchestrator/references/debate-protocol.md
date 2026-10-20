@@ -8,7 +8,7 @@ Before spawning, write into the runtime ledger (`history.md`, Runtime ledger) on
 
 ## Round 1: Independent memos
 
-Each role answers independently; do not show other roles' memos during Round 1. A memo is the session's final response (on Claude Code the SubagentStop hook also saves it under `.runtime/<stem>/memos/`; read those files when present). A session that returns a partial result (`maxTurns`) is resumed once to finish, or recorded as `partial`.
+Each role answers independently; do not show other roles' memos during Round 1. A memo is the session's final response (where the host's memo-capture hook runs, it is also saved under `.runtime/<stem>/memos/`; read those files when present). A session that returns a partial result (`maxTurns`) is resumed once to finish, or recorded as `partial`.
 
 Record every delivered memo as a summary under Roles and Opinions in the feature note, and mark its ledger row done.
 

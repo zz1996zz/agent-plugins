@@ -20,7 +20,7 @@ Run `where` first in every non-solo request; it prints the mode and root, create
     <feature stem>/
       ledger.md                     Execution Ledger, Team Lifecycle, Wave Baselines
       evidence.jsonl                verification runs (written by `verify`)
-      memos/<agent id>.md           role memos (Claude Code: written by the SubagentStop hook; else by the lead)
+      memos/<agent id>.md           role memos (written by the host's memo-capture hook where it runs; else by the lead)
       diff.patch                    the lead writes it before review (`git diff <base> -- . ':(exclude)<historyDir>'` plus uncommitted changes)
 ```
 

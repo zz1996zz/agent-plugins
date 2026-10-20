@@ -4,7 +4,7 @@ Single source for work sizing, role selection, labels, model and tool policy, sp
 
 ## Shared role preamble
 
-Paste this block verbatim at the top of every role brief. The Codex generator embeds it in each TOML's `developer_instructions`.
+Paste this block verbatim at the top of every role brief. The TOML generator embeds it in each role's `developer_instructions` for hosts that install role definitions from TOML.
 
 <!-- preamble:start -->
 You are a role session spawned by the PL lead for one feature. The brief below gives your label, the feature, your exact question, constraints, non-goals, whether you may edit files (and which), dependencies, deliverable, and success criteria. Do not begin role work without them; if a field is missing, say so in your memo under `Status: BLOCKED`.
@@ -51,13 +51,13 @@ Each role reports only findings inside the lane its definition states. A finding
 
 ## Labels
 
-Use these labels in the ledger, the feature note, and the brief so a reader can tell sessions apart. They are labels only: **never pass a `name` when spawning** (on Claude Code a named spawn becomes a teammate when Agent Teams is enabled); address a session by the agent ID the host returned.
+Use these labels in the ledger, the feature note, and the brief so a reader can tell sessions apart. They are labels only: **never pass a `name` when spawning** (on a host with teams enabled, a named spawn is converted into a long-lived teammate instead of a subagent); address a session by the agent ID the host returned.
 
 `pl-product`, `pl-architect`, `pl-qa`, `pl-backend`, `pl-frontend`, `pl-data`, `pl-review`, `pl-security`, `pl-integration`. A replacement or a later feature in the same session appends `-r2`, `-r3`; never reuse a label that already appeared in the session.
 
 ## Role sessions only
 
-Spawn roles only from the `team-pl-*` definitions through the host mapping in SKILL.md Platform Behavior, by definition name (`pl:team-pl-<role>` on Claude Code, `team-pl-<role>` on Codex). Never substitute a generic session or an agent from another plugin, even one with a matching name or purpose — it lacks this role's lane, tool policy, and memo shape. Before the first spawn in a repository, inspect the repository's own agent directories (and every additional directory the session was given) for confusable `team-pl-*` definitions; treat any same-name collision as unavailable. When a definition is unavailable, run the role as a labeled lead role pass and record `not spawned — <reason>` in the note.
+Spawn roles only from the `team-pl-*` definitions through the host mapping in SKILL.md Platform Behavior, by definition name in the exact form the host mapping gives (plugin-prefixed where the host namespaces plugin agents, plain `team-pl-<role>` otherwise). Never substitute a generic session or an agent from another plugin, even one with a matching name or purpose — it lacks this role's lane, tool policy, and memo shape. Before the first spawn in a repository, inspect the repository's own agent directories (and every additional directory the session was given) for confusable `team-pl-*` definitions; treat any same-name collision as unavailable. When a definition is unavailable, run the role as a labeled lead role pass and record `not spawned — <reason>` in the note.
 
 ## Model and tool policy
 

@@ -4,9 +4,17 @@
   "plugins": [
     {
       "name": "pl",
-      "description": "PL/테크리드 팀 오케스트레이션 — 역할 에이전트 토론·구현·검증, Obsidian/Notion 선택형 메모리",
-      "source": { "source": "local", "path": "./plugins/pl" },
-      "policy": { "installation": "AVAILABLE" }
+      "description": "PL/테크리드 오케스트레이션 — 역할 서브에이전트 토론·구현·검증, 결정 히스토리는 레포의 docs/pl 에 기록.",
+      "source": {
+        "source": "local",
+        "path": "./plugins/pl"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      }
     }
-  ]
+  ],
+  "owner": {
+    "name": "JeongSu"
+  }
 }
