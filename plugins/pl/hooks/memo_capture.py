@@ -35,6 +35,8 @@ def load_pl_history():
     if spec is None or spec.loader is None:
         raise RuntimeError("pl_history.py not found")
     module = importlib.util.module_from_spec(spec)
+    # dataclasses resolve string annotations through sys.modules; register before executing.
+    sys.modules["pl_history"] = module
     spec.loader.exec_module(module)
     return module
 
