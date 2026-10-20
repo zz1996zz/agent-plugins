@@ -58,7 +58,7 @@ class BuildCodexAgentsTests(unittest.TestCase):
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-check", data["name"])
         self.assertEqual("xhigh", data["model_reasoning_effort"])
-        self.assertEqual("read-only", data["sandbox_mode"])
+        self.assertNotIn("sandbox_mode", data)
         self.assertNotIn("model", data)
         self.assertIn("Second paragraph with a '''triple quote''' inside.", data["developer_instructions"])
         self.assertTrue(toml_text.startswith("# Generated from"))
@@ -68,18 +68,18 @@ class BuildCodexAgentsTests(unittest.TestCase):
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-production", data["name"])
-        self.assertEqual("workspace-write", data["sandbox_mode"])
+        self.assertNotIn("sandbox_mode", data)
         self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
-    def test_render_edit_tools_give_workspace_write(self) -> None:
+    def test_render_never_emits_sandbox_mode(self) -> None:
         fm, body = bca.parse_agent(
             CHECK_ROLE_SAMPLE.replace("tools: Read, Grep, Glob", "tools: Read, Write, Edit, Bash").replace(
                 "effort: xhigh\n", ""
             )
         )
         data = tomllib.loads(bca.render_toml(fm, body))
-        self.assertEqual("workspace-write", data["sandbox_mode"])
+        self.assertNotIn("sandbox_mode", data)
         self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
@@ -158,6 +158,33 @@ class BuildCodexAgentsTests(unittest.TestCase):
         ).returncode
         self.assertEqual(0, rc, "agents/codex/*.toml 가 소스와 다르다 — build_codex_agents.py 를 다시 돌려라")
         self.assertEqual(9, len(list(CODEX_DIR.glob("team-pl-*.toml"))))
+
+    def test_render_prepends_shared_preamble(self) -> None:
+        fm, body = bca.parse_agent(CHECK_ROLE_SAMPLE)
+        data = tomllib.loads(bca.render_toml(fm, body, preamble="Shared rules here."))
+        self.assertTrue(data["developer_instructions"].startswith("Shared rules here.\n"))
+        self.assertIn("You are the sample check role.", data["developer_instructions"])
+
+    def test_shared_preamble_is_extracted_from_roles_md(self) -> None:
+        preamble = bca.load_preamble()
+        self.assertIn("final response", preamble.lower())
+        self.assertNotIn("<!-- preamble:start -->", preamble)
+        for toml_path in CODEX_DIR.glob("team-pl-*.toml"):
+            data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+            self.assertTrue(data["developer_instructions"].startswith(preamble.strip()), toml_path.name)
+
+    def test_committed_agents_frontmatter_is_subagent_contract(self) -> None:
+        team_tools = {"SendMessage", "TaskList", "TaskGet", "TaskUpdate", "Agent"}
+        for path in sorted(AGENTS_DIR.glob("team-pl-*.md")):
+            fm, body = bca.parse_agent(path.read_text(encoding="utf-8"))
+            tools = {t.strip() for t in fm["tools"].split(",")}
+            self.assertFalse(tools & team_tools, path.name)
+            self.assertEqual("inherit", fm["model"], path.name)
+            self.assertTrue(fm.get("maxTurns", "").isdigit() and int(fm["maxTurns"]) > 0, path.name)
+            self.assertIn("Your lane:", body, path.name)
+            self.assertIn("Status: DONE | NEEDS_DECISION | BLOCKED", body, path.name)
+            self.assertIn("Unverifiable statically:", body, path.name)
+            self.assertNotIn("delivery channel", body, path.name)
 
     def test_committed_agents_have_no_model_key_and_effort_matches_role_tier(self) -> None:
         # 다섯 검문소 역할만 model_reasoning_effort = "xhigh" 를 갖고, 아홉 역할 모두
