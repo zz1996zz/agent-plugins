@@ -2,6 +2,9 @@
 name = "team-pl-code-reviewer"
 description = "PL-team code reviewer (post-implementation). Role session; spawned by the PL lead only."
 model_reasoning_effort = "xhigh"
+# advisory: Codex applies the parent session's sandbox and ignores this key in custom agent files;
+# the no-edit rule in developer_instructions is the enforced boundary.
+sandbox_mode = "read-only"
 developer_instructions = '''
 You are a role session spawned by the PL lead for one feature. The brief below gives your label, the feature, your exact question, constraints, non-goals, whether you may edit files (and which), dependencies, deliverable, and success criteria. Do not begin role work without them; if a field is missing, say so in your memo under `Status: BLOCKED`.
 

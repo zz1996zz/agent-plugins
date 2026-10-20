@@ -10,8 +10,9 @@ hosts, so the generated TOML never sets `model` — Codex subagents inherit the
 parent session's model when the key is absent. Only the frontmatter `effort`
 value (set on the five check roles) becomes `model_reasoning_effort`; roles
 that inherit effort too simply omit the key. `maxTurns` has no Codex
-counterpart and is dropped. `sandbox_mode` is never emitted: Codex ignores it
-in custom agent files (the parent session's sandbox always applies), so the
+counterpart and is dropped. `sandbox_mode` is still emitted as defense in
+depth, but Codex currently ignores it in custom agent files (the parent
+session's sandbox applies), so the generated TOML says so in a comment and the
 read-only rule lives in the prose, where it is enforced for both hosts.
 
 The shared role preamble (references/roles.md, between the preamble markers)
@@ -33,6 +34,9 @@ DEFAULT_OUT_DIR = DEFAULT_AGENTS_DIR / "codex"
 ROLES_MD = SCRIPT_DIR.parent / "references" / "roles.md"
 PREAMBLE_START = "<!-- preamble:start -->"
 PREAMBLE_END = "<!-- preamble:end -->"
+
+# Claude tools that mutate the working tree. Their presence decides the advisory sandbox_mode.
+EDIT_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 
 
 def load_preamble(roles_md: Path = ROLES_MD) -> str:
@@ -74,6 +78,8 @@ def _toml_multiline(value: str) -> str:
 
 def render_toml(frontmatter: dict[str, str], body: str, preamble: str = "") -> str:
     name = frontmatter["name"]
+    tools = {t.strip() for t in frontmatter.get("tools", "").split(",") if t.strip()}
+    sandbox = "workspace-write" if tools & EDIT_TOOLS else "read-only"
     effort = frontmatter.get("effort")
     if preamble:
         body = preamble.rstrip("\n") + "\n\n" + body
@@ -84,6 +90,9 @@ def render_toml(frontmatter: dict[str, str], body: str, preamble: str = "") -> s
     ]
     if effort:
         lines.append(f"model_reasoning_effort = {_toml_string(effort)}\n")
+    lines.append("# advisory: Codex applies the parent session's sandbox and ignores this key in custom agent files;\n")
+    lines.append("# the no-edit rule in developer_instructions is the enforced boundary.\n")
+    lines.append(f"sandbox_mode = {_toml_string(sandbox)}\n")
     lines.append(f"developer_instructions = {_toml_multiline(body)}\n")
     return "".join(lines)
 

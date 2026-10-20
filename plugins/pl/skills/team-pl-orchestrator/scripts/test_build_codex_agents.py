@@ -58,7 +58,7 @@ class BuildCodexAgentsTests(unittest.TestCase):
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-check", data["name"])
         self.assertEqual("xhigh", data["model_reasoning_effort"])
-        self.assertNotIn("sandbox_mode", data)
+        self.assertEqual("read-only", data["sandbox_mode"])
         self.assertNotIn("model", data)
         self.assertIn("Second paragraph with a '''triple quote''' inside.", data["developer_instructions"])
         self.assertTrue(toml_text.startswith("# Generated from"))
@@ -68,18 +68,20 @@ class BuildCodexAgentsTests(unittest.TestCase):
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-production", data["name"])
-        self.assertNotIn("sandbox_mode", data)
+        self.assertEqual("workspace-write", data["sandbox_mode"])
         self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
-    def test_render_never_emits_sandbox_mode(self) -> None:
+    def test_render_edit_tools_give_advisory_workspace_write(self) -> None:
         fm, body = bca.parse_agent(
             CHECK_ROLE_SAMPLE.replace("tools: Read, Grep, Glob", "tools: Read, Write, Edit, Bash").replace(
                 "effort: xhigh\n", ""
             )
         )
-        data = tomllib.loads(bca.render_toml(fm, body))
-        self.assertNotIn("sandbox_mode", data)
+        toml_text = bca.render_toml(fm, body)
+        data = tomllib.loads(toml_text)
+        self.assertEqual("workspace-write", data["sandbox_mode"])
+        self.assertIn("# advisory:", toml_text)
         self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
