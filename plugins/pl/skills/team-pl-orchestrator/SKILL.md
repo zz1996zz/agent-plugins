@@ -8,16 +8,6 @@ hooks:
       hooks:
         - type: command
           command: "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\""
-  SubagentStop:
-    - matcher: "^pl:team-pl-"
-      hooks:
-        - type: command
-          command: "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/memo_capture.py\""
-  PostToolUse:
-    - matcher: "SubagentHandback"
-      hooks:
-        - type: command
-          command: "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/memo_capture.py\""
 ---
 
 # Team PL Orchestrator
@@ -80,7 +70,7 @@ Common rules:
 | Term | Claude Code | Codex CLI |
 |---|---|---|
 | role session | subagent spawned with `Agent`, `subagent_type: "pl:team-pl-<role>"`, no `name` | subagent spawned with `spawn_agent`, `agent_type: "team-pl-<role>"` |
-| memo | the subagent's final response (also saved to `.runtime/<stem>/memos/` by the SubagentStop hook) | the subagent's final response (`wait_agent`) |
+| memo | the subagent's final response (the plugin's SubagentStop hook also saves it to `.runtime/<stem>/memos/`) | the subagent's final response (`wait_agent`) |
 | resume (challenge, re-review) | `SendMessage` to the agent ID | `send_input` / `resume_agent` with the agent ID |
 | stop a running session | `TaskStop` | `close_agent` |
 | skill dir `<skill-dir>` | `${CLAUDE_PLUGIN_ROOT}/skills/team-pl-orchestrator` | the `skills/team-pl-orchestrator` directory containing this SKILL.md (never `skills/pl`) |

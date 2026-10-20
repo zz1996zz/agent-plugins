@@ -32,7 +32,7 @@ There is no index file. `list` builds the listing from frontmatter when you need
 |---|---|
 | `where [--json]` | Resolve mode and root; create the layout; print warnings (ignored keys, duplicate config files, inbox fallback). Also reports `verifyCommands` and `protectedPaths` (team ∪ personal). |
 | `feature "<title>" [--request "<text>"]` | Create the feature note and its runtime ledger; print the note path. Idempotent for the same title on the same day. |
-| `decision "<title>" --feature <stem> [--supersedes <file>]` | Create a decision note linked both ways; a superseded note gets `status: superseded` and `superseded_by`, never deleted. |
+| `decision "<title>" --feature <stem> [--supersedes <file>]` | Create a decision note linked both ways (keep the title to a short noun phrase — it becomes the file name); a superseded note gets `status: superseded` and `superseded_by`, never deleted. |
 | `list [--type feature\|decision] [--status <s>]` | Listing from frontmatter. |
 | `verify --feature <stem> -- <command...>` | Run a verification command, stream its output, record exit code, tail, and the working-tree fingerprint after the run; rewrite the note's Verification table. The exit code is the helper's exit code. One argument after `--` is a shell string (run with `sh -c`, recorded verbatim — use this form for `verifyCommands` entries, e.g. `-- "cd web && pnpm test"`); several arguments are an argv. |
 | `verify --feature <stem> --withdraw "<command>" --reason "<why>"` | Remove a wrongly chosen command from the required set; the withdrawal and reason stay in the table. `verifyCommands` entries cannot be withdrawn. |

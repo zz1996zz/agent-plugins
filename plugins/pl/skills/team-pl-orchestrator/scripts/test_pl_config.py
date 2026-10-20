@@ -206,11 +206,10 @@ class SkillTests(unittest.TestCase):
             self.assertIn("PreToolUse:", block, path.name)
             self.assertIn(GUARD_COMMAND, block, path.name)
             self.assertNotIn("--scope role", block, f"{path.name}: skill hooks judge the lead unconditionally")
+        # memo capture lives in the plugin hooks: skill-frontmatter SubagentStop hooks did not fire
+        # for role subagents in the 2026-10-20 live run, plugin hooks did.
         orch_block = read_frontmatter_block(ORCHESTRATOR)
-        self.assertIn("SubagentStop:", orch_block)
-        self.assertIn('matcher: "^pl:team-pl-"', orch_block)
-        self.assertIn("memo_capture.py", orch_block)
-        self.assertIn("SubagentHandback", orch_block)
+        self.assertNotIn("SubagentStop:", orch_block)
 
     def test_pl_alias_gate(self) -> None:
         text = PL_SKILL.read_text(encoding="utf-8")
@@ -228,6 +227,10 @@ class HookTests(unittest.TestCase):
         self.assertEqual(f"{GUARD_COMMAND} --scope role", claude_cmd)
         self.assertEqual(GUARD_COMMAND, codex_cmd)
         self.assertEqual("Bash", claude["hooks"]["PreToolUse"][0]["matcher"])
+        self.assertEqual("^pl:team-pl-", claude["hooks"]["SubagentStop"][0]["matcher"])
+        self.assertIn("memo_capture.py", claude["hooks"]["SubagentStop"][0]["hooks"][0]["command"])
+        self.assertEqual("SubagentHandback", claude["hooks"]["PostToolUse"][0]["matcher"])
+        self.assertNotIn("SubagentStop", codex["hooks"])
         self.assertFalse((HOOKS_DIR / "guard.sh").exists())
         for script in ("guard.py", "memo_capture.py"):
             self.assertTrue(os.access(HOOKS_DIR / script, os.X_OK), script)

@@ -144,7 +144,7 @@ Codex에서는 새 플러그인 훅을 처음 한 번 `/hooks`에서 신뢰해�
 |---|---|---|
 | 스폰 | `Agent`(`pl:team-pl-<role>`, `name` 없음) | `spawn_agent`(`team-pl-<role>`) |
 | 재개 / 중지 | `SendMessage` / `TaskStop` | `send_input`·`resume_agent` / `close_agent` |
-| 역할 메모 저장 | SubagentStop 훅이 `.runtime/<feature>/memos/`에 자동 저장 | 리드가 기록 |
+| 역할 메모 저장 | 플러그인 SubagentStop 훅이 `pl:team-pl-*` 세션의 메모를 `.runtime/<feature>/memos/`에 자동 저장(다른 에이전트에는 아무 동작 없음) | 리드가 기록 |
 | 역할별 허용 도구 | 에이전트 `tools` 목록(`maxTurns`, 검사 역할 `effort: xhigh`) | TOML의 `sandbox_mode`는 **적용되지 않는다**(공식 문서; 부모 세션 샌드박스가 적용). 읽기 전용 규칙은 `developer_instructions` 산문 |
 | 역할 정의 설치 | 플러그인에 번들 | `install-codex.sh`로 `~/.codex/agents/`에 복사 |
 | Agent Teams | 켜 둔 사용자도 동작합니다(이름 없는 스폰은 teammate로 바뀌지 않음). 끄기를 권장: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0` | 해당 없음 |
