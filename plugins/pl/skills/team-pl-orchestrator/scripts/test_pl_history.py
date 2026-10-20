@@ -238,6 +238,81 @@ class NoteTests(TempDirCase):
         self.assertEqual(Path(proc.stdout.strip()), self.root / "features" / "2026-10-20-cli-feat.md")
 
 
+class VerifyTests(TempDirCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = make_repo(self.base)
+        self.resolved = self.resolve(self.repo)
+        ph.ensure_layout(self.resolved.root)
+        self.root = self.resolved.root
+        self.feature = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
+        self.stem = self.feature.stem
+
+    def py(self, code: str) -> list[str]:
+        return [sys.executable, "-c", code]
+
+    def test_verify_records_evidence_and_section(self) -> None:
+        rc = ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        self.assertEqual(rc, 0)
+        records = [json.loads(l) for l in ph.evidence_path(self.root, self.stem).read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["exit"], 0)
+        self.assertEqual(records[0]["tail"], ["1"])
+        self.assertTrue(records[0]["fp_after"])
+        text = self.feature.read_text(encoding="utf-8")
+        self.assertIn("| 0 |", text)
+        self.assertIn("print(1)", text)
+
+    def test_verify_failure_exit_propagates(self) -> None:
+        rc = ph.run_verify(self.resolved, self.stem, self.py("import sys; sys.exit(3)"))
+        self.assertEqual(rc, 3)
+        self.assertIn("| 3 |", self.feature.read_text(encoding="utf-8"))
+
+    def test_fingerprint_ignores_history_root(self) -> None:
+        before = ph.fingerprint(self.repo, self.root)
+        (self.root / "features" / "scratch.md").write_text("x\n", encoding="utf-8")
+        self.assertEqual(before, ph.fingerprint(self.repo, self.root))
+        (self.repo / "README.md").write_text("changed\n", encoding="utf-8")
+        self.assertNotEqual(before, ph.fingerprint(self.repo, self.root))
+
+    def test_fingerprint_post_run_is_baseline(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("open('coverage.out','w').write('c')"))
+        record = ph.latest_evidence(self.root, self.stem)[list(ph.latest_evidence(self.root, self.stem))[0]]
+        self.assertNotEqual(record["fp_before"], record["fp_after"])
+        self.assertEqual(record["fp_after"], ph.fingerprint(self.repo, self.root))
+        self.assertIn("command modified the working tree", self.feature.read_text(encoding="utf-8"))
+
+    def test_withdraw_removes_from_required_and_logs(self) -> None:
+        argv = self.py("print(2)")
+        ph.run_verify(self.resolved, self.stem, argv)
+        command = ph.command_string(argv)
+        ph.withdraw(self.resolved, self.stem, command, "wrong suite")
+        self.assertNotIn(command, ph.required_commands(self.resolved, self.stem))
+        text = self.feature.read_text(encoding="utf-8")
+        self.assertIn("withdrawn: wrong suite", text)
+        last = json.loads(ph.evidence_path(self.root, self.stem).read_text(encoding="utf-8").splitlines()[-1])
+        self.assertTrue(last["withdrawn"])
+
+    def test_withdraw_verify_command_refused(self) -> None:
+        (self.repo / ".agents").mkdir()
+        (self.repo / ".agents" / "pl.md").write_text("---\nverifyCommands:\n  - echo team\n---\n", encoding="utf-8")
+        resolved = self.resolve(self.repo)
+        with self.assertRaises(ph.HistoryError):
+            ph.withdraw(resolved, self.stem, "echo team", "no")
+        self.assertIn("echo team", ph.required_commands(resolved, self.stem))
+
+    def test_fingerprint_none_in_local_mode(self) -> None:
+        self.assertIsNone(ph.fingerprint(None, self.root))
+
+    def test_verify_cli(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "verify", "--feature", self.stem, "--", sys.executable, "-c", "print('ok')"],
+            cwd=self.repo, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("ok", proc.stdout)
+
+
 class FrontmatterTests(unittest.TestCase):
     def test_parse_frontmatter_simple_lists_and_scalars(self) -> None:
         text = "---\nhistoryDir: docs/pl\nverifyCommands:\n  - ./gradlew test\n  - npm test\nquoted: \"a: b\"\n---\nbody\n"

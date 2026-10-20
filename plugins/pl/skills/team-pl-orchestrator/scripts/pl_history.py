@@ -719,6 +719,179 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- verification evidence
+
+TAIL_LINES = 40
+
+
+def command_string(argv: list[str]) -> str:
+    import shlex
+
+    return shlex.join(argv)
+
+
+def evidence_path(root: Path, stem: str) -> Path:
+    return runtime_dir(root, stem) / "evidence.jsonl"
+
+
+def _git_out(repo_top: Path, *args: str) -> str:
+    proc = subprocess.run(["git", "-C", str(repo_top), *args], capture_output=True, text=True, check=False)
+    return proc.stdout if proc.returncode == 0 else ""
+
+
+def fingerprint(repo_top: Path | None, history_root: Path) -> str | None:
+    """Hash of HEAD + tracked diff + untracked files, excluding the history root.
+
+    None outside a repository (local mode): freshness is then `unknown`.
+    """
+    if repo_top is None:
+        return None
+    try:
+        rel = history_root.resolve().relative_to(repo_top.resolve()).as_posix()
+    except ValueError:
+        rel = None
+    exclude = [f":(exclude){rel}"] if rel else []
+    digest = hashlib.sha256()
+    digest.update(_git_out(repo_top, "rev-parse", "HEAD").encode())
+    digest.update(_git_out(repo_top, "diff", "HEAD", "--", ".", *exclude).encode())
+    untracked = _git_out(repo_top, "ls-files", "--others", "--exclude-standard", "--", ".", *exclude)
+    for name in sorted(filter(None, untracked.splitlines())):
+        path = repo_top / name
+        digest.update(name.encode())
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            pass
+    return digest.hexdigest()
+
+
+def _append_evidence(root: Path, stem: str, record: dict) -> None:
+    path = evidence_path(root, stem)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def read_evidence(root: Path, stem: str) -> list[dict]:
+    path = evidence_path(root, stem)
+    if not path.is_file():
+        return []
+    records = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            try:
+                records.append(json.loads(line))
+            except ValueError:
+                continue
+    return records
+
+
+def latest_evidence(root: Path, stem: str) -> dict[str, dict]:
+    """Command → last record. A withdrawal record replaces the run record."""
+    latest: dict[str, dict] = {}
+    for record in read_evidence(root, stem):
+        latest[record["command"]] = record
+    return latest
+
+
+def required_commands(resolved: Resolved, stem: str) -> list[str]:
+    """Everything run through `verify` (minus withdrawn) ∪ verifyCommands."""
+    commands: list[str] = []
+    for command, record in latest_evidence(resolved.root, stem).items():
+        if not record.get("withdrawn"):
+            commands.append(command)
+    return _dedup(commands + list(resolved.verify_commands))
+
+
+def _render_verification(resolved: Resolved, stem: str, closing: str | None = None) -> str:
+    rows = ["| Command | Exit | Ran at | Note |", "|---|---|---|---|"]
+    for command, record in latest_evidence(resolved.root, stem).items():
+        cell = "`" + command.replace("|", "\\|") + "`"
+        if record.get("withdrawn"):
+            rows.append(f"| {cell} | — | — | withdrawn: {record.get('reason', '')} |")
+            continue
+        notes = []
+        if record.get("fp_before") != record.get("fp_after"):
+            notes.append("command modified the working tree")
+        if record.get("note"):
+            notes.append(record["note"])
+        rows.append(f"| {cell} | {record['exit']} | {record['ts_end']} | {'; '.join(notes)} |")
+    for command in resolved.verify_commands:
+        if command not in latest_evidence(resolved.root, stem):
+            rows.append(f"| `{command}` | — | — | required by verifyCommands; not run |")
+    stamp = closing if closing is not None else _current_stamp(resolved.root, stem)
+    return "\n".join(rows) + f"\n\nFresh at close: {stamp}"
+
+
+def _current_stamp(root: Path, stem: str) -> str:
+    path = root / "features" / f"{stem}.md"
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    match = re.search(r"(?m)^Fresh at close: (.+)$", text)
+    return match.group(1).strip() if match else "(not closed)"
+
+
+def _write_verification(resolved: Resolved, stem: str, closing: str | None = None) -> None:
+    path = resolved.root / "features" / f"{stem}.md"
+    text = path.read_text(encoding="utf-8")
+    atomic_write(path, replace_or_insert_section(text, "Verification", _render_verification(resolved, stem, closing), "Review"))
+
+
+def run_verify(resolved: Resolved, stem: str, argv: list[str]) -> int:
+    if not argv:
+        raise HistoryError("verify needs a command after `--`")
+    stem = feature_stem(resolved.root, stem)
+    command = command_string(argv)
+    ts_start = now_iso()
+    fp_before = fingerprint(resolved.repo_top, resolved.root)
+    tail: list[str] = []
+    try:
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=resolved.repo_top or Path.cwd())
+    except OSError as exc:
+        raise HistoryError(f"cannot run {command!r}: {exc}") from exc
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        tail.append(line.rstrip("\n"))
+        if len(tail) > TAIL_LINES:
+            del tail[0]
+    exit_code = proc.wait()
+    record = {
+        "ts_start": ts_start,
+        "ts_end": now_iso(),
+        "command": command,
+        "exit": exit_code,
+        "tail": tail,
+        "fp_before": fp_before,
+        "fp_after": fingerprint(resolved.repo_top, resolved.root),
+    }
+    _append_evidence(resolved.root, stem, record)
+    _write_verification(resolved, stem)
+    return exit_code
+
+
+def withdraw(resolved: Resolved, stem: str, command: str, reason: str) -> None:
+    stem = feature_stem(resolved.root, stem)
+    reason = single_line(reason, "reason")
+    if command in resolved.verify_commands:
+        raise HistoryError("cannot withdraw a verifyCommands entry")
+    if command not in latest_evidence(resolved.root, stem):
+        raise HistoryError(f"no evidence for command {command!r}")
+    _append_evidence(resolved.root, stem, {"ts": now_iso(), "command": command, "withdrawn": True, "reason": reason})
+    _write_verification(resolved, stem)
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    resolved = _resolved_from_args(args)
+    if args.withdraw:
+        withdraw(resolved, args.feature, args.withdraw, args.reason or "")
+        print(f"withdrawn: {args.withdraw}")
+        return 0
+    argv = list(args.argv)
+    if argv and argv[0] == "--":
+        argv = argv[1:]
+    return run_verify(resolved, args.feature, argv)
+
+
 # ---------------------------------------------------------------- CLI
 
 
@@ -772,6 +945,14 @@ def build_parser() -> argparse.ArgumentParser:
     lst.add_argument("--status")
     lst.add_argument("--work")
     lst.set_defaults(func=cmd_list)
+
+    verify = sub.add_parser("verify", help="run a verification command and record its evidence")
+    verify.add_argument("--feature", required=True)
+    verify.add_argument("--withdraw", metavar="COMMAND", help="remove a previously run command from the required set")
+    verify.add_argument("--reason")
+    verify.add_argument("--work")
+    verify.add_argument("argv", nargs=argparse.REMAINDER)
+    verify.set_defaults(func=cmd_verify)
     return parser
 
 
