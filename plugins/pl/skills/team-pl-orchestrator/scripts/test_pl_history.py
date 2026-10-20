@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Behavior tests for pl_history.py — the in-repo history helper."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+import unittest.mock
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+
+import pl_history as ph  # noqa: E402
+
+
+def git(repo: Path, *args: str) -> str:
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@x", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@x")
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True, env=env).stdout
+
+
+def make_repo(base: Path) -> Path:
+    repo = base / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "commit.gpgsign", "false")
+    (repo / "README.md").write_text("hello\n", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "-qm", "init")
+    return repo
+
+
+class TempDirCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self._tmp.name).resolve()
+        self.addCleanup(self._tmp.cleanup)
+
+    def resolve(self, cwd: Path, **kw):
+        return ph.resolve(cwd, config_path=kw.get("config_path"), work=kw.get("work"), root_override=kw.get("root_override"))
+
+
+class WhereTests(TempDirCase):
+    def test_where_defaults_to_docs_pl_in_repo(self) -> None:
+        repo = make_repo(self.base)
+        resolved = self.resolve(repo)
+        self.assertEqual(resolved.mode, "repo")
+        self.assertEqual(resolved.root, repo / "docs" / "pl")
+        ph.ensure_layout(resolved.root)
+        self.assertEqual((resolved.root / ".runtime" / ".gitignore").read_text(encoding="utf-8"), "*\n")
+        self.assertTrue((resolved.root / "architecture.md").is_file())
+        self.assertTrue((resolved.root / "features").is_dir())
+        self.assertTrue((resolved.root / "decisions").is_dir())
+
+    def test_where_reads_team_history_dir(self) -> None:
+        repo = make_repo(self.base)
+        (repo / ".agents").mkdir()
+        (repo / ".agents" / "pl.md").write_text("---\nhistoryDir: notes/pl\n---\n", encoding="utf-8")
+        resolved = self.resolve(repo)
+        self.assertEqual(resolved.root, repo / "notes" / "pl")
+        self.assertEqual(resolved.history_dir, "notes/pl")
+
+    def test_where_rejects_escaping_history_dir(self) -> None:
+        repo = make_repo(self.base)
+        (repo / ".agents").mkdir()
+        for bad in ("../x", "/abs/path", ".git/x", "docs/../../x"):
+            (repo / ".agents" / "pl.md").write_text(f"---\nhistoryDir: {bad}\n---\n", encoding="utf-8")
+            with self.assertRaises(ph.HistoryError, msg=bad):
+                self.resolve(repo)
+        self.assertFalse((repo / "docs").exists())
+
+    def test_where_ignores_local_history_dir_with_warning(self) -> None:
+        repo = make_repo(self.base)
+        (repo / ".agents").mkdir()
+        (repo / ".agents" / "pl.local.md").write_text("---\nhistoryDir: elsewhere\nworkNamespace: old\n---\n", encoding="utf-8")
+        resolved = self.resolve(repo)
+        self.assertEqual(resolved.root, repo / "docs" / "pl")
+        self.assertTrue(any("historyDir" in w for w in resolved.warnings))
+        self.assertTrue(any("workNamespace" in w for w in resolved.warnings))
+
+    def test_where_merges_verify_commands_team_and_local(self) -> None:
+        repo = make_repo(self.base)
+        (repo / ".agents").mkdir()
+        (repo / ".agents" / "pl.md").write_text(
+            "---\nverifyCommands:\n  - a\nprotectedPaths:\n  - infra/\n---\n", encoding="utf-8"
+        )
+        (repo / ".agents" / "pl.local.md").write_text("---\nverifyCommands:\n  - b\n  - a\n---\n", encoding="utf-8")
+        resolved = self.resolve(repo)
+        self.assertEqual(resolved.verify_commands, ["a", "b"])
+        self.assertEqual(resolved.protected_paths, ["infra/"])
+
+    def test_where_prefers_agents_local_over_claude_local(self) -> None:
+        repo = make_repo(self.base)
+        (repo / ".agents").mkdir()
+        (repo / ".claude").mkdir()
+        (repo / ".agents" / "pl.local.md").write_text("---\nverifyCommands:\n  - agents\n---\n", encoding="utf-8")
+        (repo / ".claude" / "pl.local.md").write_text("---\nverifyCommands:\n  - claude\n---\n", encoding="utf-8")
+        resolved = self.resolve(repo)
+        self.assertEqual(resolved.verify_commands, ["agents"])
+        self.assertTrue(any("pl.local.md" in w for w in resolved.warnings))
+
+    def test_where_local_mode_uses_xdg_and_work(self) -> None:
+        cwd = self.base / "plain"
+        cwd.mkdir()
+        xdg = self.base / "xdg"
+        with unittest.mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(xdg)}):
+            resolved = self.resolve(cwd, work="foo")
+        self.assertEqual(resolved.mode, "local")
+        self.assertEqual(resolved.root, xdg / "pl" / "history" / "foo")
+        self.assertIsNone(resolved.repo_top)
+
+    def test_where_local_mode_without_work_uses_inbox(self) -> None:
+        cwd = self.base / "plain"
+        cwd.mkdir()
+        with unittest.mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(self.base / "xdg")}):
+            resolved = self.resolve(cwd)
+        self.assertEqual(resolved.root.name, "inbox")
+        self.assertTrue(any("inbox" in w for w in resolved.warnings))
+
+    def test_where_local_mode_config_history_root(self) -> None:
+        cwd = self.base / "plain"
+        cwd.mkdir()
+        config = self.base / "config.json"
+        config.write_text(json.dumps({"historyRoot": str(self.base / "hist")}), encoding="utf-8")
+        resolved = self.resolve(cwd, config_path=config, work="w")
+        self.assertEqual(resolved.root, self.base / "hist" / "w")
+
+    def test_where_cli_json_output(self) -> None:
+        repo = make_repo(self.base)
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "where", "--json"],
+            cwd=repo, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        data = json.loads(proc.stdout)
+        self.assertEqual(data["mode"], "repo")
+        self.assertTrue(data["created"])
+        self.assertTrue((repo / "docs" / "pl" / ".runtime" / ".gitignore").is_file())
+
+    def test_where_cli_rejects_with_exit_2(self) -> None:
+        repo = make_repo(self.base)
+        (repo / ".agents").mkdir()
+        (repo / ".agents" / "pl.md").write_text("---\nhistoryDir: ../x\n---\n", encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "where"], cwd=repo, capture_output=True, text=True
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("historyDir", proc.stderr)
+
+
+class FrontmatterTests(unittest.TestCase):
+    def test_parse_frontmatter_simple_lists_and_scalars(self) -> None:
+        text = "---\nhistoryDir: docs/pl\nverifyCommands:\n  - ./gradlew test\n  - npm test\nquoted: \"a: b\"\n---\nbody\n"
+        data, warnings = ph.parse_frontmatter_simple(text)
+        self.assertEqual(data["historyDir"], "docs/pl")
+        self.assertEqual(data["verifyCommands"], ["./gradlew test", "npm test"])
+        self.assertEqual(data["quoted"], "a: b")
+        self.assertEqual(warnings, [])
+
+    def test_parse_frontmatter_simple_warns_on_nested(self) -> None:
+        text = "---\nnested:\n  key: value\n---\n"
+        data, warnings = ph.parse_frontmatter_simple(text)
+        self.assertNotIn("nested", data)
+        self.assertTrue(warnings)
+
+    def test_parse_frontmatter_simple_no_frontmatter(self) -> None:
+        self.assertEqual(ph.parse_frontmatter_simple("# just text\n"), ({}, []))
+
+
+if __name__ == "__main__":
+    unittest.main()
