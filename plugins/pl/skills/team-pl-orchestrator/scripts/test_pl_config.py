@@ -1,513 +1,300 @@
 #!/usr/bin/env python3
-"""Static regression tests for the personal Claude Code PL configuration."""
+"""Invariant tests for the pl plugin's prompt documents, manifests, and hook wiring.
+
+These pin structure (frontmatter values, file sets, headings, budgets, forbidden
+references) rather than sentences, so wording can change without touching tests.
+"""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
 import unittest
 from pathlib import Path
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
-CLAUDE_DIR = SKILL_DIR.parents[1]
-AGENTS_DIR = CLAUDE_DIR / "agents"
-PL_SKILL = CLAUDE_DIR / "skills" / "pl" / "SKILL.md"
-CODEX_MANIFEST = CLAUDE_DIR / ".codex-plugin" / "plugin.json"
-ZSHRC = Path.home() / ".zshrc"
+PLUGIN_DIR = SKILL_DIR.parents[1]
+REPO_DIR = PLUGIN_DIR.parents[1]
+AGENTS_DIR = PLUGIN_DIR / "agents"
+HOOKS_DIR = PLUGIN_DIR / "hooks"
+PL_SKILL = PLUGIN_DIR / "skills" / "pl" / "SKILL.md"
+ORCHESTRATOR = SKILL_DIR / "SKILL.md"
+REFERENCES = SKILL_DIR / "references"
+CLAUDE_MANIFEST = PLUGIN_DIR / ".claude-plugin" / "plugin.json"
+CODEX_MANIFEST = PLUGIN_DIR / ".codex-plugin" / "plugin.json"
+MARKETPLACES = (REPO_DIR / ".claude-plugin" / "marketplace.json", REPO_DIR / ".agents" / "plugins" / "marketplace.json")
 
-# Verified 2026-07-14 (Claude Code 2.1.208): a role `tools` allowlist
-# strips the team coordination tools too, despite official docs saying they
-# are always available. Every role must therefore list them explicitly or
-# the teammate cannot deliver results, settle tasks, or answer shutdown.
-TEAM_TOOLS = {"SendMessage", "TaskList", "TaskGet", "TaskUpdate"}
-
-# references/*.md 와 agents/*.md 본문에서 금지되는 호스트 어휘. 대응은 SKILL.md Platform
-# Behavior 의 매핑표에만 둔다 (스펙 4.1).
-HOST_WORDS = (
-    "SendMessage", "TaskList", "TaskGet", "TaskUpdate", "TaskStop",
-    "spawn_agent", "send_input", "close_agent",
-    "Agent Teams", "Claude Code", "Codex",
-)
-
-ROLE_CONFIG = {
-    "team-pl-product-analyst": ("inherit", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
-    "team-pl-qa-engineer": ("inherit", {"Read", "Bash", "Grep", "Glob"} | TEAM_TOOLS),
-    "team-pl-architect": ("inherit", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
-    "team-pl-backend-engineer": (
-        "inherit",
-        {"Read", "Write", "Edit", "Bash", "Grep", "Glob"} | TEAM_TOOLS,
-    ),
-    "team-pl-frontend-engineer": (
-        "inherit",
-        {"Read", "Write", "Edit", "Bash", "Grep", "Glob"} | TEAM_TOOLS,
-    ),
-    "team-pl-data-engineer": (
-        "inherit",
-        {"Read", "Write", "Edit", "Bash", "Grep", "Glob"} | TEAM_TOOLS,
-    ),
-    "team-pl-integration-reviewer": ("inherit", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
-    "team-pl-code-reviewer": ("inherit", {"Read", "Bash", "Grep", "Glob"} | TEAM_TOOLS),
-    "team-pl-security-reviewer": ("inherit", {"Read", "Grep", "Glob"} | TEAM_TOOLS),
+TEAM_TOOLS = {"SendMessage", "TaskList", "TaskGet", "TaskUpdate", "Agent"}
+ROLE_TOOLS = {
+    "team-pl-product-analyst": {"Read", "Grep", "Glob"},
+    "team-pl-architect": {"Read", "Grep", "Glob"},
+    "team-pl-qa-engineer": {"Read", "Bash", "Grep", "Glob"},
+    "team-pl-backend-engineer": {"Read", "Write", "Edit", "Bash", "Grep", "Glob"},
+    "team-pl-frontend-engineer": {"Read", "Write", "Edit", "Bash", "Grep", "Glob"},
+    "team-pl-data-engineer": {"Read", "Write", "Edit", "Bash", "Grep", "Glob"},
+    "team-pl-code-reviewer": {"Read", "Bash", "Grep", "Glob"},
+    "team-pl-security-reviewer": {"Read", "Grep", "Glob"},
+    "team-pl-integration-reviewer": {"Read", "Grep", "Glob"},
 }
-
-# Check roles are the recall-critical gates other work depends on and run at
-# `effort: xhigh`; production roles inherit effort from the lead along with
-# the model (see references/roles.md Model Policy).
 CHECK_ROLES = {
-    "team-pl-architect",
-    "team-pl-qa-engineer",
-    "team-pl-integration-reviewer",
-    "team-pl-code-reviewer",
-    "team-pl-security-reviewer",
+    "team-pl-architect", "team-pl-qa-engineer", "team-pl-code-reviewer",
+    "team-pl-security-reviewer", "team-pl-integration-reviewer",
 }
-
-LEGACY_ROLE_NAMES = {name.replace("team-pl-", "team-", 1) for name in ROLE_CONFIG}
-IMPLEMENTATION_ROLES = {
-    "team-pl-backend-engineer",
-    "team-pl-frontend-engineer",
-    "team-pl-data-engineer",
-}
+# Host vocabulary stays in SKILL.md's Platform Behavior; references and agent bodies are host-neutral.
+HOST_WORDS = ("SendMessage", "TaskList", "TaskStop", "spawn_agent", "send_input", "close_agent", "Agent Teams", "Claude Code", "Codex")
+# Things the 0.5.0 redesign removed; none may come back into a runtime prompt.
+FORBIDDEN_RUNTIME_REFERENCES = (
+    "memory_note", "pl_user_config", "TeamCreate", "TeamDelete", "explain-diff", "`/verify`",
+    "Obsidian", "Notion", "memory-templates", "memory-obsidian", "memory-notion", "team-lifecycle.md",
+    "external-benchmarking", "TaskUpdate", "TeammateIdle",
+)
+GUARD_COMMAND = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/guard.py"'
 
 
 def read_frontmatter(path: Path) -> dict[str, str]:
     lines = path.read_text(encoding="utf-8").splitlines()
-    if not lines or lines[0] != "---":
-        raise AssertionError(f"missing frontmatter: {path}")
-
-    try:
-        end = lines.index("---", 1)
-    except ValueError as error:
-        raise AssertionError(f"unterminated frontmatter: {path}") from error
-
+    assert lines and lines[0] == "---", f"missing frontmatter: {path}"
+    end = lines.index("---", 1)
     result: dict[str, str] = {}
     for line in lines[1:end]:
-        if not line.strip() or line.lstrip().startswith("#"):
+        if not line.strip() or line.lstrip().startswith("#") or line.startswith(" ") or line.startswith("-"):
             continue
-        key, separator, value = line.partition(":")
-        if not separator:
-            raise AssertionError(f"unsupported frontmatter line in {path}: {line}")
+        key, _, value = line.partition(":")
         result[key.strip()] = value.strip()
     return result
 
 
-def parse_tools(value: str) -> set[str]:
-    return {item.strip() for item in value.split(",") if item.strip()}
+def read_frontmatter_block(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    # YAML double-quoted scalars escape inner quotes; compare against the decoded command.
+    return text.split("---", 2)[1].replace('\\"', '"')
 
 
 def read_body(path: Path) -> str:
-    # Frontmatter `tools:` legitimately names host tool APIs (SendMessage,
-    # TaskList, ...); host-neutrality checks apply only to the body.
-    _, _, body = path.read_text(encoding="utf-8").split("---", 2)
-    return body
+    return path.read_text(encoding="utf-8").split("---", 2)[2]
 
 
-def read_agent_name(path: Path) -> str | None:
-    text = path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
-    frontmatter = text.split("---", 2)
-    if len(frontmatter) < 3 or frontmatter[0] != "":
-        return None
-    for line in frontmatter[1].splitlines():
-        if line.startswith("name:"):
-            return line.partition(":")[2].split("#", 1)[0].strip().strip("\"'") or None
-    return None
+def load_module(path: Path):
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    import sys
+
+    sys.modules[path.stem] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-class PlConfigTests(unittest.TestCase):
-    def test_role_inventory_models_and_tools(self) -> None:
-        role_files = {path.stem: path for path in AGENTS_DIR.glob("team-pl-*.md")}
-        self.assertEqual(set(ROLE_CONFIG), set(role_files))
-        for legacy_name in LEGACY_ROLE_NAMES:
-            self.assertFalse((AGENTS_DIR / f"{legacy_name}.md").exists(), legacy_name)
-
-        check_role_count = 0
-        for role, (expected_model, expected_tools) in ROLE_CONFIG.items():
-            frontmatter = read_frontmatter(role_files[role])
-            self.assertEqual(role, frontmatter.get("name"))
-            self.assertEqual(expected_model, frontmatter.get("model"), role)
-            self.assertEqual(expected_tools, parse_tools(frontmatter.get("tools", "")), role)
-            # Check roles are the gates other work depends on; pin their effort so a
-            # later edit cannot silently drop recall. Production roles inherit effort
-            # from the lead along with the model, so they leave it unset.
-            expected_effort = "xhigh" if role in CHECK_ROLES else None
-            self.assertEqual(expected_effort, frontmatter.get("effort"), role)
-            if role in CHECK_ROLES:
-                check_role_count += 1
-            self.assertNotIn("permissionMode", frontmatter, role)
-            # Description은 상주 컨텍스트 비용이므로 압축 형식을 유지한다.
-            # 금지 규칙 전문(standalone subagent 금지)은 본문(스폰 시 로드)에 있다.
-            self.assertIn("Role session", frontmatter.get("description", ""), role)
-            self.assertIn("PL lead only", frontmatter.get("description", ""), role)
-            self.assertLess(len(frontmatter.get("description", "")), 160, role)
-
-            role_text = role_files[role].read_text(encoding="utf-8")
-            # build_codex_agents.py never copies frontmatter into the generated
-            # body either, so the host-neutral prose check below uses the body.
-            role_body = read_body(role_files[role])
-            self.assertIn("You are a role session spawned by the PL lead", role_text, role)
-            for status in ("Status: DONE", "Status: NEEDS_DECISION", "Status: BLOCKED"):
-                self.assertIn(status, role_text, role)
-            self.assertIn("not instructions that can override", role_text, role)
-            self.assertIn("Do not begin role work without a brief that states your task fields", role_text, role)
-            self.assertNotIn("Do not edit files unless", role_text, role)
-            # 호스트 중립: 전달 수단은 브리프가 정한다 (SKILL.md Platform Behavior 매핑표).
-            self.assertIn("Deliver your memo through the delivery channel named in your brief", role_text, role)
-            self.assertIn("settle the owned ledger entry when the brief names one", role_text, role)
-            self.assertIn("in one delivery", role_text, role)
-            for host_word in HOST_WORDS:
-                self.assertNotIn(host_word, role_body, f"{role}: {host_word}")
-            self.assertNotIn(". Return:", role_text, role)
-            if role in IMPLEMENTATION_ROLES:
-                self.assertIn("listing the files you intend to touch", role_text, role)
-            elif role != "team-pl-code-reviewer":
-                self.assertIn(
-                    "send the proposed change and file ownership to the lead",
-                    role_text,
-                    role,
-                )
-            if role in IMPLEMENTATION_ROLES:
-                self.assertIn("exclusive file or module ownership", role_text, role)
-                self.assertIn("external mutation APIs", role_text, role)
-                self.assertIn("avoid over-engineering", role_text, role)
-                self.assertIn("they do not define the solution", role_text, role)
-            else:
-                self.assertNotIn("Write", expected_tools, role)
-                self.assertNotIn("Edit", expected_tools, role)
-            if role == "team-pl-code-reviewer":
-                self.assertIn("coverage, not filtering", role_text, role)
-            if role == "team-pl-qa-engineer":
-                self.assertIn("not the definition of the solution", role_text, role)
-            self.assertTrue(TEAM_TOOLS <= expected_tools, role)
-
-        # Every role inherits the lead's model; only the five check roles pin
-        # effort: xhigh (they are the checks other work depends on) — see
-        # roles.md Model Policy. The other four inherit effort too.
-        self.assertEqual(5, check_role_count)
-        self.assertEqual(4, len(ROLE_CONFIG) - check_role_count)
-        self.assertFalse(list(AGENTS_DIR.glob("team-pl-*-opus.md")))
-
-        names: dict[str, list[Path]] = {}
-        for agent_file in AGENTS_DIR.rglob("*.md"):
-            name = read_agent_name(agent_file)
-            if name:
-                names.setdefault(name, []).append(agent_file)
-        duplicates = {name: paths for name, paths in names.items() if len(paths) > 1}
-        self.assertFalse(duplicates, duplicates)
-
-    def test_references_and_roles_are_host_neutral(self) -> None:
-        # 스펙 4.1: 호스트 이름·도구 이름은 SKILL.md Platform Behavior 에만 산다.
-        # 예외: 사용자가 직접 치는 설정 명령(memory-notion 온보딩), 시스템 개선 전용 문서.
-        exempt = {"memory-notion.md", "external-benchmarking.md"}
-        files = [p for p in (SKILL_DIR / "references").glob("*.md") if p.name not in exempt]
-        for path in files:
-            text = path.read_text(encoding="utf-8")
-            for host_word in HOST_WORDS:
-                self.assertNotIn(host_word, text, f"{path.name}: {host_word}")
+class RoleDefinitionTests(unittest.TestCase):
+    def test_role_inventory_and_frontmatter(self) -> None:
+        names = {p.stem for p in AGENTS_DIR.glob("team-pl-*.md")}
+        self.assertEqual(set(ROLE_TOOLS), names)
+        seen: set[str] = set()
         for path in sorted(AGENTS_DIR.glob("team-pl-*.md")):
-            # Frontmatter `tools:` legitimately names host tool APIs; only the
-            # post-frontmatter body is checked here.
+            fm = read_frontmatter(path)
+            self.assertEqual(path.stem, fm["name"], path.name)
+            self.assertNotIn(fm["name"], seen, "duplicate agent name")
+            seen.add(fm["name"])
+            tools = {t.strip() for t in fm["tools"].split(",")}
+            self.assertEqual(ROLE_TOOLS[path.stem], tools, path.name)
+            self.assertFalse(tools & TEAM_TOOLS, path.name)
+            self.assertEqual("inherit", fm["model"], path.name)
+            self.assertTrue(int(fm["maxTurns"]) > 0, path.name)
+            if path.stem in CHECK_ROLES:
+                self.assertEqual("xhigh", fm.get("effort"), path.name)
+            else:
+                self.assertNotIn("effort", fm, path.name)
+            self.assertNotIn("hooks", fm, f"{path.name}: plugin agents ignore hooks frontmatter")
+
+    def test_role_bodies_are_host_neutral_and_carry_contract(self) -> None:
+        for path in sorted(AGENTS_DIR.glob("team-pl-*.md")):
             body = read_body(path)
-            for host_word in HOST_WORDS:
-                self.assertNotIn(host_word, body, f"{path.name}: {host_word}")
-        notion = (SKILL_DIR / "references" / "memory-notion.md").read_text(encoding="utf-8")
-        self.assertIn("codex mcp add notion --url https://mcp.notion.com/mcp", notion)
-        self.assertIn("claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp", notion)
-        self.assertNotIn("ToolSearch", notion)
+            self.assertTrue(body.strip(), path.name)
+            for word in HOST_WORDS:
+                self.assertNotIn(word, body, f"{path.name}: {word}")
+            self.assertIn("Your lane:", body, path.name)
+            self.assertIn("Status: DONE | NEEDS_DECISION | BLOCKED", body, path.name)
+            self.assertIn("Unverifiable statically:", body, path.name)
+            self.assertIn("Key files:", body, path.name)
+            self.assertIn("Do not run pl_history.py", body, path.name)
 
-    def test_skill_entrypoints_and_references(self) -> None:
-        pl_frontmatter = read_frontmatter(PL_SKILL)
-        orchestrator = SKILL_DIR / "SKILL.md"
-        orchestrator_frontmatter = read_frontmatter(orchestrator)
+    def test_agents_directory_has_no_stray_markdown(self) -> None:
+        stray = [p.name for p in AGENTS_DIR.glob("*.md") if not p.name.startswith("team-pl-")]
+        self.assertEqual([], stray)
 
-        self.assertEqual("pl", pl_frontmatter.get("name"))
-        self.assertEqual("true", pl_frontmatter.get("disable-model-invocation"))
-        self.assertEqual(
-            "Skill(pl:team-pl-orchestrator)",
-            pl_frontmatter.get("allowed-tools"),
-        )
-        self.assertEqual("team-pl-orchestrator", orchestrator_frontmatter.get("name"))
-        self.assertEqual("false", orchestrator_frontmatter.get("user-invocable"))
-        self.assertNotIn("model", pl_frontmatter)
-        self.assertNotIn("model", orchestrator_frontmatter)
 
-        pl_text = PL_SKILL.read_text(encoding="utf-8")
-        orchestrator_text = orchestrator.read_text(encoding="utf-8")
-        self.assertIn("$ARGUMENTS", pl_text)
-        self.assertNotIn("`$ARGUMENTS`", pl_text)
-        self.assertIn("\n$ARGUMENTS\n", pl_text)
-        self.assertIn("on Codex the request is the remainder of the user message after `$pl`", pl_text)
-        self.assertIn("read `../team-pl-orchestrator/SKILL.md` relative to this file", pl_text)
-        self.assertIn("invoke `pl:team-pl-orchestrator` with the `Skill` tool", pl_text)
-        self.assertLess(len(pl_text.splitlines()), 40)
-        self.assertLess(len(pl_frontmatter.get("description", "")), 1536)
-        self.assertLess(len(orchestrator_frontmatter.get("description", "")), 1536)
-        for required in (
-            "### Host mapping",
-            "### Claude Code (Agent Teams)",
-            "### Codex CLI (subagents)",
-            "| role session |",
-            "| delivery channel |",
-            "| task ledger |",
-            "| peer challenge |",
-            "| close session |",
-            "| skill dir (`<skill-dir>`) |",
-            "| data dir (`<data-dir>`) |",
-            "| repo-local config |",
-            "every enabled session already has one implicit team",
-            "`TeamCreate` and `TeamDelete` no longer exist",
-            "allowlist strips the team coordination tools",
-            "read the matching session file under `~/.claude/projects/`",
-            "`install-codex.sh`",
-            "become required fields of the spawn brief",
-            "actual app, CLI, or service path",
-            "done-with-risks",
-            "Never ask a role session to spawn further sessions",
-            "Do not substitute a dynamic `Workflow`",
-            "do not silently downgrade to ordinary subagents",
-            "`.agents/pl.local.md`",
-            "`.claude/pl.local.md`",
-            # 실사용 결함 D2/D3 (2026-09-08): 스폰 도구 실측과 솔로 패스 열거 기준.
-            "confirm a spawn tool exists by name",
-            "is never a solo pass",
-        ):
-            self.assertIn(required, pl_text + "\n" + orchestrator_text, required)
-        # 호스트 변수는 hooks.json 밖에서 쓰지 않는다 (스펙 4.2 <skill-dir>/<data-dir>).
-        # 유일한 허용 정의 지점은 SKILL.md 의 Host mapping 표 Claude 열이다.
-        for path in sorted(SKILL_DIR.rglob("*.md")) + [PL_SKILL]:
-            if path == SKILL_DIR / "SKILL.md":
-                continue
+class ReferenceTests(unittest.TestCase):
+    def test_reference_set(self) -> None:
+        self.assertEqual({"roles.md", "debate-protocol.md", "history.md"}, {p.name for p in REFERENCES.glob("*.md")})
+
+    def test_references_are_host_neutral(self) -> None:
+        for path in sorted(REFERENCES.glob("*.md")):
             text = path.read_text(encoding="utf-8")
-            self.assertNotIn("CLAUDE_PLUGIN_ROOT", text, path)
-            self.assertNotIn("CLAUDE_PLUGIN_DATA", text, path)
-        self.assertEqual(1, orchestrator_text.count("CLAUDE_PLUGIN_ROOT"))
-        self.assertEqual(1, orchestrator_text.count("CLAUDE_PLUGIN_DATA"))
+            self.assertTrue(text.strip(), path.name)
+            for word in HOST_WORDS:
+                self.assertNotIn(word, text, f"{path.name}: {word}")
 
-        # Single-source layout: catalog/model/spawn policy lives only in
-        # roles.md; lifecycle/triage rules live only in team-lifecycle.md
-        # (progressive disclosure — the orchestrator keeps read triggers).
-        self.assertNotIn("## Model Policy", orchestrator_text)
-        self.assertNotIn("## Role Session Health and Restart", orchestrator_text)
-        self.assertIn("`references/team-lifecycle.md`", orchestrator_text)
-        # Budget 4000: Platform Behavior carries the two-host mapping table plus
-        # both host subsections (Claude Code and Codex CLI), and that vocabulary
-        # lives nowhere else in the plugin. Raised from 3200 to 3600 on 2026-09-08
-        # for the real-usage defect fixes (spawn evidence, spawn-tool detection,
-        # enumerated solo-pass criteria, headless tool set). Raised from 3600 to
-        # 4000 on 2026-09-08 (round 3) for the corrected Codex spawn contract
-        # (`agent_type`, TOML pins, sandbox-override note) and the read-only-lane
-        # sandbox-loss warning — those rules are worth the words.
-        self.assertLess(len(orchestrator_text.split()), 4000)
-        # 공유 태스크 목록은 Claude 전용이다. 그 어휘가 Claude 절 밖으로 새면
-        # Codex 호스트에서 존재하지 않는 것을 지시하게 된다.
-        before_claude, _, rest = orchestrator_text.partition(
-            "### Claude Code (Agent Teams)"
-        )
-        _, _, from_codex = rest.partition("### Codex CLI (subagents)")
-        self.assertTrue(before_claude and from_codex)
-        self.assertNotIn("shared task", before_claude)
-        self.assertNotIn("shared task", from_codex)
+    def test_roles_md_markers(self) -> None:
+        text = (REFERENCES / "roles.md").read_text(encoding="utf-8")
+        self.assertIn("<!-- preamble:start -->", text)
+        self.assertIn("<!-- preamble:end -->", text)
+        for heading in ("## Work sizing", "## Role menu", "## Labels", "## Role brief contract", "## Replacement"):
+            self.assertIn(heading, text, heading)
+        for size in ("`solo`", "`light`", "`full`"):
+            self.assertIn(size, text)
+        self.assertIn("never pass a `name`", text)
 
-        lifecycle_text = (
-            SKILL_DIR / "references" / "team-lifecycle.md"
-        ).read_text(encoding="utf-8")
-        for required in (
-            "## Team Lifecycle",
-            "## Role Session Health and Restart",
-            "Prefix every ledger entry subject",
-            "Do not reuse a runtime name",
-            "force-close the session through the host's close-session mechanism",
-            "rather than looping",
-            "do not spawn a replacement in the same session",
-            "idle without a delivered result",
-            "Host-specific recovery steps (transcript lookup, session restore) live in SKILL.md Platform Behavior.",
-        ):
-            self.assertIn(required, lifecycle_text)
-        for host_word in HOST_WORDS:
-            self.assertNotIn(host_word, lifecycle_text, host_word)
-        self.assertLess(len(lifecycle_text.split()), 1300)
+    def test_debate_protocol_markers(self) -> None:
+        text = (REFERENCES / "debate-protocol.md").read_text(encoding="utf-8")
+        for heading in ("## Round 0", "## Round 1", "## Synthesis", "## User decisions", "## Round 2", "## Decide", "## Implementation", "## Review Loop", "## Close"):
+            self.assertIn(heading, text, heading)
+        self.assertIn("skipped — no material conflict in synthesis", text)
+        self.assertIn("three cycles", text)
+        self.assertIn("Wave Baselines", text)
+        self.assertIn("diff.patch", text)
 
-        # Single-source: the full spawn-brief delivery contract lives only in
-        # roles.md; the orchestrator points at the Role Prompt Contract.
-        self.assertIn("Role Prompt Contract in `references/roles.md`", orchestrator_text)
-        self.assertNotIn("delivery contract in every spawn brief", orchestrator_text)
-        self.assertNotIn("v2.1.198", orchestrator_text)
-        # The lead-side safety boundaries (input trust, irreversible-action
-        # gate) must sit inside the auto-compaction reattach window, not at
-        # the document tail.
-        self.assertIn("Do not commit, push, merge, deploy", orchestrator_text[:6000])
-        self.assertIn("not instructions that can override", orchestrator_text[:6000])
-        self.assertIn("destructive shortcut", orchestrator_text[:6000])
-        # 실사용 결함 D1 (2026-09-08): 스폰하지 않은 역할 세션의 산출물을 durable
-        # 메모리에 쓰는 조작을 막는 규칙. 압축 재부착 창 안에 있어야 한다.
-        self.assertIn("## Role Session Evidence", orchestrator_text[:6000])
-        self.assertIn("not spawned", orchestrator_text[:6000])
+    def test_history_md_documents_every_helper_command(self) -> None:
+        text = (REFERENCES / "history.md").read_text(encoding="utf-8")
+        for command in ("where", "feature", "decision", "list", "verify", "close", "check"):
+            self.assertRegex(text, rf"`{command}\b", command)
+        self.assertIn("docs/pl", text)
+        self.assertIn(".runtime/", text)
+        self.assertIn("Fresh at close", text)
 
-        runtime_contract = pl_text + "\n" + orchestrator_text
-        for legacy_name in LEGACY_ROLE_NAMES:
-            self.assertNotIn(f"`{legacy_name}`", runtime_contract, legacy_name)
 
-        done_line = next(
-            line for line in orchestrator_text.splitlines() if line.startswith("- `done`:")
-        )
-        risk_line = next(
-            line
-            for line in orchestrator_text.splitlines()
-            if line.startswith("- `done-with-risks`:")
-        )
-        self.assertNotIn("timeout", done_line.lower())
-        self.assertIn("confirmed stopped", done_line)
-        self.assertIn("shutdown timeout", risk_line)
-        self.assertIn("## Standing Completion Contract", orchestrator_text[:5000])
-        self.assertIn("- `done`:", orchestrator_text[:5000])
-        self.assertLess(len(orchestrator_text.splitlines()), 500)
+class SkillTests(unittest.TestCase):
+    def test_orchestrator_budgets_and_contract_position(self) -> None:
+        text = ORCHESTRATOR.read_text(encoding="utf-8")
+        self.assertLess(len(text.splitlines()), 500)
+        self.assertLessEqual(len(text.split()), 2600)
+        head = text[:5000]
+        self.assertIn("## Standing Completion Contract", head)
+        self.assertIn("- `done`:", head)
+        self.assertIn("## Safety Boundaries", head)
 
-        runtime_text = "\n".join(
-            path.read_text(encoding="utf-8")
-            for path in (
-                PL_SKILL,
-                orchestrator,
-                SKILL_DIR / "references" / "roles.md",
-                SKILL_DIR / "references" / "team-lifecycle.md",
-                SKILL_DIR / "references" / "debate-protocol.md",
-            )
-        ).lower()
-        self.assertNotIn("lead clean up the team", runtime_text)
-        self.assertNotIn("before creating a fresh team", runtime_text)
-        self.assertNotIn("use subagents for role passes", runtime_text)
-        self.assertNotIn("not a documented teammate termination", runtime_text)
-        self.assertNotIn("not scanned for subagents", runtime_text)
+    def test_orchestrator_workflow_and_references(self) -> None:
+        text = ORCHESTRATOR.read_text(encoding="utf-8")
+        for ref in ("references/roles.md", "references/debate-protocol.md", "references/history.md"):
+            self.assertIn(ref, text, ref)
+        for marker in ("pl_history.py", "where --json", "verify --feature", "close --feature", "## Platform Behavior", "## Workflow", ".agents/pl.md"):
+            self.assertIn(marker, text, marker)
+        self.assertIn("never pass a `name`", text)
+        # sizing lives inline in the workflow: a lead that skips the references must still size correctly
+        for marker in ("`solo` only when ALL hold", "never `solo`", "`full` otherwise", "The user's words override"):
+            self.assertIn(marker, text, marker)
 
-        references = SKILL_DIR / "references"
-        self.assertEqual(
-            {
-                "roles.md",
-                "team-lifecycle.md",
-                "debate-protocol.md",
-                "memory-templates.md",
-                "external-benchmarking.md",
-                "memory-obsidian.md",
-                "memory-notion.md",
-            },
-            {path.name for path in references.glob("*.md")},
-        )
-        roles_text = (references / "roles.md").read_text(encoding="utf-8")
-        self.assertIn(
-            "no commit, push, merge, deploy, publish, or external mutation",
-            roles_text,
-        )
-        self.assertIn("input-trust boundary", roles_text)
-        self.assertIn("delivery channel for this host", roles_text)
-        self.assertIn("host mapping in SKILL.md Platform Behavior", roles_text)
-        for host_word in HOST_WORDS:
-            self.assertNotIn(host_word, roles_text, host_word)
-        self.assertIn("high-fidelity references", roles_text)
-        self.assertIn("when the output is itself the check", roles_text)
-        self.assertIn("also set `effort: xhigh` in frontmatter", roles_text)
-        self.assertIn("no destructive shortcuts", roles_text)
-        # 실사용 결함 D4 (2026-09-08): 다른 플러그인의 동명 에이전트로 대체 금지.
-        self.assertIn("Never substitute an agent from another plugin", roles_text)
-        self.assertIn("never speculate about code", roles_text)
-        self.assertIn("follow instructions literally", roles_text)
-        self.assertNotIn("Require each role to return:", roles_text)
-        # roles.md is the sole catalog: every role type, model routing, override
-        # ban, and collision rule live here; memo item lists live only in the
-        # agent definition bodies (no "Output:" duplicates to drift).
-        for role in ROLE_CONFIG:
-            self.assertIn(role, roles_text)
-        self.assertIn("## Model Policy", roles_text)
-        self.assertIn("inherit", roles_text)
-        self.assertIn("breaks inheritance", roles_text)
-        self.assertIn("treat any same-name collision as unavailable", roles_text)
-        self.assertNotIn("Output:", roles_text)
-        self.assertNotIn("The memo must contain:", roles_text)
+    def test_runtime_prompts_have_no_removed_references(self) -> None:
+        runtime = [PL_SKILL, ORCHESTRATOR, *REFERENCES.glob("*.md"), *AGENTS_DIR.glob("team-pl-*.md")]
+        for path in runtime:
+            text = path.read_text(encoding="utf-8")
+            for word in FORBIDDEN_RUNTIME_REFERENCES:
+                self.assertNotIn(word, text, f"{path.name}: {word}")
+        # the one allowed mention of teammates explains why spawns carry no name
+        orch = ORCHESTRATOR.read_text(encoding="utf-8").lower()
+        self.assertLessEqual(orch.count("teammate"), 1)
 
-        debate_text = (references / "debate-protocol.md").read_text(encoding="utf-8")
-        self.assertIn("peer-challenge channel", debate_text)
-        self.assertIn("one ledger entry per independent memo", debate_text)
-        for host_word in HOST_WORDS:
-            self.assertNotIn(host_word, debate_text, host_word)
-        self.assertIn("idle-without-result triage", debate_text)
-        self.assertIn("delivery contract in `references/roles.md`", debate_text)
-        self.assertIn("skip Round 2 when synthesis surfaced none", debate_text)
-        # A blank Round 2 section cannot be told apart later from an unrecorded
-        # round or from conflicts the lead never noticed; force an explicit skip.
-        self.assertIn("skipped — no material conflict in synthesis", debate_text)
-        self.assertIn("per-gate rubric", debate_text)
-        # Reset/close procedures live only in SKILL.md; debate-protocol points.
-        self.assertIn("Role Session Health and Restart", debate_text)
-        self.assertNotIn("Spawn a fresh teammate", debate_text)
-        self.assertNotIn("Each memo must include:", debate_text)
+    def test_skill_frontmatter_hooks(self) -> None:
+        pl_fm = read_frontmatter(PL_SKILL)
+        self.assertEqual("true", pl_fm["disable-model-invocation"])
+        self.assertEqual("Skill(pl:team-pl-orchestrator)", pl_fm["allowed-tools"])
+        for path in (PL_SKILL, ORCHESTRATOR):
+            block = read_frontmatter_block(path)
+            self.assertIn("hooks:", block, path.name)
+            self.assertIn("PreToolUse:", block, path.name)
+            self.assertIn(GUARD_COMMAND, block, path.name)
+            self.assertNotIn("--scope role", block, f"{path.name}: skill hooks judge the lead unconditionally")
+        # memo capture lives in the plugin hooks: skill-frontmatter SubagentStop hooks did not fire
+        # for role subagents in the 2026-10-20 live run, plugin hooks did.
+        orch_block = read_frontmatter_block(ORCHESTRATOR)
+        self.assertNotIn("SubagentStop:", orch_block)
 
-    # Every role now inherits the lead's model (frontmatter `model: inherit`);
-    # a `CLAUDE_CODE_SUBAGENT_MODEL` left set on the user's machine would still
-    # override that inheritance for any session that omits `model`, so this
-    # stays a machine-specific guard rather than something the plugin itself
-    # can enforce.
-    def test_launch_alias_and_model_override_policy(self) -> None:
-        if os.environ.get("PL_SKIP_MACHINE_TESTS"):
-            self.skipTest("PL_SKIP_MACHINE_TESTS set")
-        if not ZSHRC.exists():
-            self.skipTest("machine-specific: ~/.zshrc not present")
-        zshrc_text = ZSHRC.read_text(encoding="utf-8")
-        self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", zshrc_text)
-        self.assertIsNone(os.environ.get("CLAUDE_CODE_SUBAGENT_MODEL"))
+    def test_pl_alias_gate(self) -> None:
+        text = PL_SKILL.read_text(encoding="utf-8")
+        self.assertIn("pl:team-pl-orchestrator", text)
+        self.assertIn("$ARGUMENTS", text)
+        self.assertIn("## Hard rules", text)
 
-        user_settings = Path.home() / ".claude" / "settings.json"
-        if user_settings.exists():
-            settings = json.loads(user_settings.read_text(encoding="utf-8"))
-            self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", settings.get("env") or {})
 
-    def test_codex_manifests_and_skill_metadata(self) -> None:
-        claude_manifest = json.loads(
-            (CLAUDE_DIR / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
-        )
-        codex_manifest = json.loads(CODEX_MANIFEST.read_text(encoding="utf-8"))
-        # 설치 캐시가 버전 키다. 두 호스트의 버전이 갈리면 한쪽 사용자에게만 변경이 전파된다.
-        self.assertEqual(claude_manifest["version"], codex_manifest["version"])
-        self.assertEqual("pl", codex_manifest["name"])
-        self.assertEqual("./skills/", codex_manifest["skills"])
-        self.assertEqual("./hooks/hooks.json", codex_manifest["hooks"])
-        # Notion MCP 는 번들하지 않는다 (README 정책).
-        self.assertNotIn("mcpServers", codex_manifest)
+class HookTests(unittest.TestCase):
+    def test_hook_files_and_modes(self) -> None:
+        claude = json.loads((HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+        codex = json.loads((HOOKS_DIR / "hooks.codex.json").read_text(encoding="utf-8"))
+        claude_cmd = claude["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        codex_cmd = codex["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        self.assertEqual(f"{GUARD_COMMAND} --scope role", claude_cmd)
+        self.assertEqual(GUARD_COMMAND, codex_cmd)
+        self.assertEqual("Bash", claude["hooks"]["PreToolUse"][0]["matcher"])
+        self.assertEqual("^pl:team-pl-", claude["hooks"]["SubagentStop"][0]["matcher"])
+        self.assertIn("memo_capture.py", claude["hooks"]["SubagentStop"][0]["hooks"][0]["command"])
+        self.assertEqual("SubagentHandback", claude["hooks"]["PostToolUse"][0]["matcher"])
+        self.assertNotIn("SubagentStop", codex["hooks"])
+        self.assertFalse((HOOKS_DIR / "guard.sh").exists())
+        for script in ("guard.py", "memo_capture.py"):
+            self.assertTrue(os.access(HOOKS_DIR / script, os.X_OK), script)
 
-        marketplace = json.loads(
-            (CLAUDE_DIR.parents[1] / ".agents" / "plugins" / "marketplace.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        self.assertEqual("zz1996zz", marketplace["name"])
-        entry = next(p for p in marketplace["plugins"] if p["name"] == "pl")
-        self.assertEqual({"source": "local", "path": "./plugins/pl"}, entry["source"])
+    def test_python_helpers_import_on_this_interpreter(self) -> None:
+        for path in (SCRIPT_DIR / "pl_history.py", HOOKS_DIR / "guard.py", HOOKS_DIR / "memo_capture.py"):
+            module = load_module(path)
+            self.assertTrue(callable(getattr(module, "main")), path.name)
 
-        # Codex 는 exec 에서 $pl 을 전개하지 않고, false 면 스킬이 목록에서 사라져 진입점이 없어진다 (2026-09-08 실측). description 이 호출 조건을 좁힌다.
-        pl_meta = (CLAUDE_DIR / "skills" / "pl" / "agents" / "openai.yaml").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("allow_implicit_invocation: true", pl_meta)
-        orch_meta = (SKILL_DIR / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        self.assertIn("allow_implicit_invocation: true", orch_meta)
+    def test_no_jq_dependency_in_plugin(self) -> None:
+        for path in list(HOOKS_DIR.glob("*")) + [PLUGIN_DIR / "install-codex.sh"]:
+            if path.is_file():
+                self.assertNotRegex(path.read_text(encoding="utf-8"), r"\bjq\b", path.name)
 
-    def test_python_helpers_compile(self) -> None:
-        for script in SCRIPT_DIR.glob("*.py"):
-            compile(script.read_text(encoding="utf-8"), str(script), "exec")
+
+class ManifestTests(unittest.TestCase):
+    def test_manifests_agree(self) -> None:
+        claude = json.loads(CLAUDE_MANIFEST.read_text(encoding="utf-8"))
+        codex = json.loads(CODEX_MANIFEST.read_text(encoding="utf-8"))
+        self.assertEqual(claude["version"], codex["version"])
+        self.assertEqual(claude["description"], codex["description"])
+        self.assertEqual("pl", codex["name"])
+        self.assertEqual("./skills/", codex["skills"])
+        self.assertEqual("./hooks/hooks.codex.json", codex["hooks"])
+        self.assertNotIn("mcpServers", codex)
+        for marketplace in MARKETPLACES:
+            data = json.loads(marketplace.read_text(encoding="utf-8"))
+            self.assertEqual("zz1996zz", data["name"])
+            entry = next(p for p in data["plugins"] if p["name"] == "pl")
+            self.assertEqual(claude["description"], entry["description"], marketplace)
+            # Claude marketplaces use a path string; Codex marketplaces use the object form.
+            self.assertIn(entry["source"], ("./plugins/pl", {"source": "local", "path": "./plugins/pl"}), marketplace)
+
+    def test_openai_skill_metadata(self) -> None:
+        for path in (PLUGIN_DIR / "skills" / "pl" / "agents" / "openai.yaml", SKILL_DIR / "agents" / "openai.yaml"):
+            self.assertIn("allow_implicit_invocation: true", path.read_text(encoding="utf-8"), path)
 
     def test_no_machine_specific_paths(self) -> None:
-        # Exclude this test file itself: its own assertion below necessarily
-        # embeds the literal marker string it checks for in every other file.
-        # Any user home path (macOS/Linux) is machine-specific; also catch the
-        # current runner's home for exotic layouts.
         machine_path = re.compile(r"/(?:Users|home)/[A-Za-z0-9._-]+")
         home = str(Path.home())
         self_path = Path(__file__).resolve()
-        for path in sorted(SKILL_DIR.rglob("*")) + sorted(AGENTS_DIR.glob("*.md")) + [PL_SKILL]:
-            if path.is_file() and path.suffix in {".md", ".py"} and path.resolve() != self_path:
+        roots = [PLUGIN_DIR, REPO_DIR / "tests", REPO_DIR / ".github"]
+        for root in roots:
+            for path in sorted(root.rglob("*")):
+                if not path.is_file() or path.suffix not in {".md", ".py", ".sh", ".json", ".yml", ".toml"}:
+                    continue
+                if path.resolve() == self_path or ".git" in path.parts:
+                    continue
                 text = path.read_text(encoding="utf-8")
                 found = machine_path.search(text)
                 self.assertIsNone(found, f"{path}: {found.group(0) if found else ''}")
                 self.assertNotIn(home, text, path)
 
 
+class MachineTests(unittest.TestCase):
+    def test_no_subagent_model_override_on_this_machine(self) -> None:
+        if not os.environ.get("PL_MACHINE_TESTS"):
+            self.skipTest("opt-in: set PL_MACHINE_TESTS=1")
+        self.assertIsNone(os.environ.get("CLAUDE_CODE_SUBAGENT_MODEL"))
+        user_settings = Path.home() / ".claude" / "settings.json"
+        if user_settings.exists():
+            settings = json.loads(user_settings.read_text(encoding="utf-8"))
+            self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", settings.get("env") or {})
+
+
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=1)

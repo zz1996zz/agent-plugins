@@ -9,7 +9,15 @@ Every role session inherits the model of the parent (lead) session on both
 hosts, so the generated TOML never sets `model` — Codex subagents inherit the
 parent session's model when the key is absent. Only the frontmatter `effort`
 value (set on the five check roles) becomes `model_reasoning_effort`; roles
-that inherit effort too simply omit the key.
+that inherit effort too simply omit the key. `maxTurns` has no Codex
+counterpart and is dropped. `sandbox_mode` is still emitted as defense in
+depth, but Codex currently ignores it in custom agent files (the parent
+session's sandbox applies), so the generated TOML says so in a comment and the
+read-only rule lives in the prose, where it is enforced for both hosts.
+
+The shared role preamble (references/roles.md, between the preamble markers)
+is prepended to every `developer_instructions`, because on Codex the lead's
+brief may be shorter than on Claude Code and the definition must stand alone.
 """
 
 from __future__ import annotations
@@ -23,9 +31,19 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PLUGIN_ROOT = SCRIPT_DIR.parents[2]
 DEFAULT_AGENTS_DIR = PLUGIN_ROOT / "agents"
 DEFAULT_OUT_DIR = DEFAULT_AGENTS_DIR / "codex"
+ROLES_MD = SCRIPT_DIR.parent / "references" / "roles.md"
+PREAMBLE_START = "<!-- preamble:start -->"
+PREAMBLE_END = "<!-- preamble:end -->"
 
-# Claude tools that mutate the working tree. Their presence decides sandbox_mode.
+# Claude tools that mutate the working tree. Their presence decides the advisory sandbox_mode.
 EDIT_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
+
+
+def load_preamble(roles_md: Path = ROLES_MD) -> str:
+    text = roles_md.read_text(encoding="utf-8")
+    start = text.index(PREAMBLE_START) + len(PREAMBLE_START)
+    end = text.index(PREAMBLE_END)
+    return text[start:end].strip() + "\n"
 
 
 def parse_agent(text: str) -> tuple[dict[str, str], str]:
@@ -58,11 +76,13 @@ def _toml_multiline(value: str) -> str:
     return f'"""\n{escaped}"""'
 
 
-def render_toml(frontmatter: dict[str, str], body: str) -> str:
+def render_toml(frontmatter: dict[str, str], body: str, preamble: str = "") -> str:
     name = frontmatter["name"]
     tools = {t.strip() for t in frontmatter.get("tools", "").split(",") if t.strip()}
     sandbox = "workspace-write" if tools & EDIT_TOOLS else "read-only"
     effort = frontmatter.get("effort")
+    if preamble:
+        body = preamble.rstrip("\n") + "\n\n" + body
     lines = [
         f"# Generated from ../{name}.md by build_codex_agents.py — do not edit; edit the .md and rebuild.\n",
         f"name = {_toml_string(name)}\n",
@@ -70,6 +90,8 @@ def render_toml(frontmatter: dict[str, str], body: str) -> str:
     ]
     if effort:
         lines.append(f"model_reasoning_effort = {_toml_string(effort)}\n")
+    lines.append("# advisory: Codex applies the parent session's sandbox and ignores this key in custom agent files;\n")
+    lines.append("# the no-edit rule in developer_instructions is the enforced boundary.\n")
     lines.append(f"sandbox_mode = {_toml_string(sandbox)}\n")
     lines.append(f"developer_instructions = {_toml_multiline(body)}\n")
     return "".join(lines)
@@ -81,8 +103,9 @@ def build(agents_dir: Path, out_dir: Path, check: bool) -> int:
         print(f"no agent sources under {agents_dir}", file=sys.stderr)
         return 2
     expected: dict[str, str] = {}
+    preamble = load_preamble()
     for src in sources:
-        text = render_toml(*parse_agent(src.read_text(encoding="utf-8")))
+        text = render_toml(*parse_agent(src.read_text(encoding="utf-8")), preamble=preamble)
         try:
             tomllib.loads(text)
         except tomllib.TOMLDecodeError as exc:
