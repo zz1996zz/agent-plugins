@@ -892,6 +892,178 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return run_verify(resolved, args.feature, argv)
 
 
+# ---------------------------------------------------------------- check / close
+
+CHOICE_PLACEHOLDER_PATTERN = re.compile(r"<[^<>\n]*\|[^<>\n]*>")
+COMPLETION_SECTION_PATTERN = re.compile(r"(?ms)^## Completion\n(.*?)(?=^## |\Z)")
+VERIFICATION_SECTION_PATTERN = re.compile(r"(?ms)^## Verification\n(.*?)(?=^## |\Z)")
+TEAM_LINE_PATTERN = re.compile(r"(?m)^-[ \t]*Team:[ \t]*(.*)$")
+DONE_FORBIDDEN_TEAM_TOKENS = ("partial", "failed")
+HTML_COMMENT_PATTERN = re.compile(r"(?s)<!--.*?-->")
+
+
+def _note_files(root: Path, stem: str | None) -> list[Path]:
+    if stem:
+        return [root / "features" / f"{stem}.md"]
+    files = sorted((root / "features").glob("*.md")) + sorted((root / "decisions").glob("*.md"))
+    arch = root / "architecture.md"
+    return files + ([arch] if arch.is_file() else [])
+
+
+def _verification_rows(text: str) -> int:
+    match = VERIFICATION_SECTION_PATTERN.search(text)
+    if not match:
+        return 0
+    rows = [l for l in match.group(1).splitlines() if l.startswith("| `")]
+    return len([r for r in rows if "| — | — |" not in r])
+
+
+def check(root: Path, *, stem: str | None, assume_status: str | None = None) -> list[str]:
+    """Structural integrity of committed notes. Read-only; identical on every clone.
+
+    `assume_status` evaluates a single feature as if its status were already that
+    value — `close` uses it so placeholder rules apply before the status is written.
+    """
+    problems: list[str] = []
+    for note in _note_files(root, stem):
+        if not note.is_file():
+            problems.append(f"missing note: {note}")
+            continue
+        text = note.read_text(encoding="utf-8")
+        fm = parse_frontmatter(text) or {}
+        for destination in iter_markdown_links(text):
+            target = local_link_target(note, destination)
+            if target is not None and not target.exists():
+                problems.append(f"missing local link: {note} -> {destination}")
+        for key in ("decisions", "feature", "supersedes", "superseded_by"):
+            value = fm.get(key)
+            refs = value if isinstance(value, list) else ([value] if value else [])
+            for ref in refs:
+                if not (root / str(ref)).is_file():
+                    problems.append(f"missing frontmatter link: {note} -> {key}: {ref}")
+        kind = fm.get("type")
+        status = assume_status if (assume_status and stem and kind == "Feature") else fm.get("status")
+        if kind == "Feature":
+            if status not in FEATURE_STATUSES:
+                problems.append(f"nonstandard feature status: {note} -> {status!r} (allowed: {', '.join(FEATURE_STATUSES)})")
+        elif kind == "Decision":
+            if status not in DECISION_STATUSES:
+                problems.append(f"nonstandard decision status: {note} -> {status!r} (allowed: {', '.join(DECISION_STATUSES)})")
+        prose = strip_code(HTML_COMMENT_PATTERN.sub("", text))
+        if status != "in-progress" and kind in ("Feature", "Decision"):
+            for placeholder in dict.fromkeys(CHOICE_PLACEHOLDER_PATTERN.findall(prose)):
+                problems.append(f"unresolved placeholder: {note} -> {placeholder}")
+        if kind == "Feature" and status == "done":
+            completion = COMPLETION_SECTION_PATTERN.search(prose)
+            team = TEAM_LINE_PATTERN.search(completion.group(1)) if completion else None
+            team_text = (team.group(1) if team else "").lower()
+            for token in DONE_FORBIDDEN_TEAM_TOKENS:
+                if token in team_text:
+                    problems.append(f"done status contradicts Team line: {note} -> {token!r}")
+            if _verification_rows(text) == 0:
+                problems.append(f"done status with no verification rows: {note}")
+            stamp = re.search(r"(?m)^Fresh at close: (.+)$", text)
+            if not stamp or stamp.group(1).strip() not in ("yes", "unknown"):
+                problems.append(f"done status without `Fresh at close: yes|unknown` stamp: {note}")
+    return problems
+
+
+def _lifecycle_problems(root: Path, stem: str) -> list[str]:
+    ledger = runtime_dir(root, stem) / "ledger.md"
+    if not ledger.is_file():
+        return []
+    problems = []
+    text = ledger.read_text(encoding="utf-8")
+    for label in ("Partial", "Failed"):
+        match = re.search(rf"(?m)^-[ \t]*{label}:[ \t]*(.*)$", text)
+        value = match.group(1).strip() if match else ""
+        if value and value.lower() not in ("0", "none", "-", "—"):
+            problems.append(f"Team Lifecycle {label}: {value} (runtime ledger) — cannot close as done")
+    return problems
+
+
+def _evidence_problems(resolved: Resolved, stem: str) -> tuple[list[str], bool]:
+    """(problems, fresh). fresh is False when any required command is stale/failed/missing."""
+    problems: list[str] = []
+    latest = latest_evidence(resolved.root, stem)
+    required = required_commands(resolved, stem)
+    if not [c for c in required if c in latest and not latest[c].get("withdrawn")]:
+        problems.append("no verification evidence recorded (run `pl_history.py verify --feature <stem> -- <command>`)")
+    current = fingerprint(resolved.repo_top, resolved.root)
+    for command in required:
+        record = latest.get(command)
+        if record is None or record.get("withdrawn"):
+            problems.append(f"required command not run: {command!r}")
+            continue
+        if record.get("exit") != 0:
+            problems.append(f"required command failed (exit {record.get('exit')}): {command!r}")
+        if current is not None and record.get("fp_after") != current:
+            problems.append(f"evidence is stale (working tree changed after it ran): {command!r}")
+    return problems, not problems
+
+
+def close_feature(resolved: Resolved, stem: str, status: str) -> list[str]:
+    if status not in FEATURE_STATUSES or status == "in-progress":
+        raise HistoryError(f"close status must be one of {', '.join(s for s in FEATURE_STATUSES if s != 'in-progress')}")
+    stem = feature_stem(resolved.root, stem)
+    path = resolved.root / "features" / f"{stem}.md"
+    evidence_problems, fresh = _evidence_problems(resolved, stem)
+    problems = [
+        p for p in check(resolved.root, stem=stem, assume_status=status)
+        if "Fresh at close" not in p and "no verification rows" not in p
+    ]
+    if status == "done":
+        problems += evidence_problems + _lifecycle_problems(resolved.root, stem)
+        text = path.read_text(encoding="utf-8")
+        completion = COMPLETION_SECTION_PATTERN.search(strip_code(text))
+        team = TEAM_LINE_PATTERN.search(completion.group(1)) if completion else None
+        team_text = (team.group(1) if team else "").lower()
+        problems += [f"Team line contains {t!r}; close as done-with-risks instead" for t in DONE_FORBIDDEN_TEAM_TOKENS if t in team_text]
+    if problems:
+        return problems
+    if resolved.repo_top is None:
+        stamp = "unknown"
+    else:
+        stamp = "yes" if fresh else "no"
+    if status != "done":
+        latest = latest_evidence(resolved.root, stem)
+        for problem in evidence_problems:
+            for command, record in latest.items():
+                if repr(command) in problem and not record.get("withdrawn"):
+                    record["note"] = "failed at close" if "failed" in problem else "stale at close"
+                    _append_evidence(resolved.root, stem, record)
+    _write_verification(resolved, stem, closing=stamp)
+    text = path.read_text(encoding="utf-8")
+    atomic_write(path, _set_frontmatter_field(text, "status", status))
+    return []
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    resolved = _resolved_from_args(args)
+    stem = feature_stem(resolved.root, args.feature) if args.feature else None
+    problems = check(resolved.root, stem=stem)
+    if args.evidence_only and stem:
+        problems = _evidence_problems(resolved, stem)[0]
+    for problem in problems:
+        print(problem)
+    if problems:
+        return 1
+    print("history check ok")
+    return 0
+
+
+def cmd_close(args: argparse.Namespace) -> int:
+    resolved = _resolved_from_args(args)
+    problems = close_feature(resolved, args.feature, args.status)
+    for problem in problems:
+        print(problem)
+    if problems:
+        print(f"not closed: fix the problems above or close as done-with-risks/blocked", file=sys.stderr)
+        return 1
+    print(f"closed {args.feature} as {args.status}")
+    return 0
+
+
 # ---------------------------------------------------------------- CLI
 
 
@@ -953,6 +1125,18 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--work")
     verify.add_argument("argv", nargs=argparse.REMAINDER)
     verify.set_defaults(func=cmd_verify)
+
+    close = sub.add_parser("close", help="run the closing checks and write the feature status")
+    close.add_argument("--feature", required=True)
+    close.add_argument("--status", required=True, choices=[s for s in FEATURE_STATUSES if s != "in-progress"])
+    close.add_argument("--work")
+    close.set_defaults(func=cmd_close)
+
+    chk = sub.add_parser("check", help="read-only structural check of the history root")
+    chk.add_argument("--feature")
+    chk.add_argument("--evidence-only", action="store_true", help="with --feature: report only evidence problems")
+    chk.add_argument("--work")
+    chk.set_defaults(func=cmd_check)
     return parser
 
 

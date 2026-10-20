@@ -313,6 +313,149 @@ class VerifyTests(TempDirCase):
         self.assertIn("ok", proc.stdout)
 
 
+class CheckCloseTests(TempDirCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = make_repo(self.base)
+        self.resolved = self.resolve(self.repo)
+        ph.ensure_layout(self.resolved.root)
+        self.root = self.resolved.root
+        self.feature = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
+        self.stem = self.feature.stem
+
+    def py(self, code: str) -> list[str]:
+        return [sys.executable, "-c", code]
+
+    def set_team_line(self, value: str) -> None:
+        text = self.feature.read_text(encoding="utf-8").replace("- Team:", f"- Team: {value}", 1)
+        text = text.replace("Size: <solo | light | full> — <why>", "Size: light — small change")
+        self.feature.write_text(text, encoding="utf-8")
+
+    @staticmethod
+    def fill_size(path: Path) -> None:
+        text = path.read_text(encoding="utf-8").replace("Size: <solo | light | full> — <why>", "Size: solo — tiny")
+        path.write_text(text, encoding="utf-8")
+
+    def test_close_done_refuses_unresolved_placeholder(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        text = self.feature.read_text(encoding="utf-8").replace("- Team:", "- Team: 1 role session (complete 1)", 1)
+        self.feature.write_text(text, encoding="utf-8")
+        problems = ph.close_feature(self.resolved, self.stem, "done")
+        self.assertTrue(any("placeholder" in p for p in problems), problems)
+
+    def test_check_passes_fresh_feature(self) -> None:
+        self.assertEqual(ph.check(self.root, stem=None), [])
+
+    def test_check_reports_missing_link_and_bad_status(self) -> None:
+        text = self.feature.read_text(encoding="utf-8")
+        text = text.replace("status: in-progress", "status: finished").replace("## Request\n", "## Request\n\nSee [spec](../missing.md).\n")
+        self.feature.write_text(text, encoding="utf-8")
+        problems = ph.check(self.root, stem=None)
+        self.assertTrue(any("missing local link" in p for p in problems), problems)
+        self.assertTrue(any("status" in p and "finished" in p for p in problems), problems)
+
+    def test_check_is_read_only(self) -> None:
+        before = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        ph.check(self.root, stem=None)
+        after = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        self.assertEqual(before, after)
+
+    def test_check_done_requires_stamp_and_rows(self) -> None:
+        text = self.feature.read_text(encoding="utf-8").replace("status: in-progress", "status: done")
+        self.feature.write_text(text, encoding="utf-8")
+        problems = ph.check(self.root, stem=self.stem)
+        self.assertTrue(any("no verification" in p for p in problems), problems)
+        self.assertTrue(any("Fresh at close" in p for p in problems), problems)
+
+    def test_check_done_forbids_partial_team(self) -> None:
+        text = self.feature.read_text(encoding="utf-8").replace("status: in-progress", "status: done")
+        self.feature.write_text(text, encoding="utf-8")
+        self.set_team_line("3 role sessions (complete 2, partial 1)")
+        problems = ph.check(self.root, stem=self.stem)
+        self.assertTrue(any("partial" in p for p in problems), problems)
+
+    def test_close_done_refuses_without_evidence(self) -> None:
+        problems = ph.close_feature(self.resolved, self.stem, "done")
+        self.assertTrue(any("no verification evidence" in p for p in problems), problems)
+        self.assertEqual(ph.parse_frontmatter(self.feature.read_text(encoding="utf-8"))["status"], "in-progress")
+
+    def test_close_done_refuses_stale_evidence(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        (self.repo / "README.md").write_text("edited after verify\n", encoding="utf-8")
+        problems = ph.close_feature(self.resolved, self.stem, "done")
+        self.assertTrue(any("stale" in p for p in problems), problems)
+
+    def test_close_done_refuses_failed_required(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("import sys; sys.exit(1)"))
+        problems = ph.close_feature(self.resolved, self.stem, "done")
+        self.assertTrue(any("exit 1" in p for p in problems), problems)
+
+    def test_close_done_refuses_missing_verify_command(self) -> None:
+        (self.repo / ".agents").mkdir()
+        (self.repo / ".agents" / "pl.md").write_text("---\nverifyCommands:\n  - echo team\n---\n", encoding="utf-8")
+        git(self.repo, "add", ".agents")
+        git(self.repo, "commit", "-qm", "cfg")
+        resolved = self.resolve(self.repo)
+        ph.run_verify(resolved, self.stem, self.py("print(1)"))
+        problems = ph.close_feature(resolved, self.stem, "done")
+        self.assertTrue(any("echo team" in p and "not run" in p for p in problems), problems)
+
+    def test_close_done_refuses_failed_lifecycle(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        ledger = ph.runtime_dir(self.root, self.stem) / "ledger.md"
+        ledger.write_text(ledger.read_text(encoding="utf-8").replace("- Failed:", "- Failed: pl-qa (maxTurns)"), encoding="utf-8")
+        problems = ph.close_feature(self.resolved, self.stem, "done")
+        self.assertTrue(any("Failed" in p for p in problems), problems)
+
+    def test_close_done_writes_status_and_stamp(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        self.set_team_line("2 role sessions (complete 2)")
+        self.assertEqual(ph.close_feature(self.resolved, self.stem, "done"), [])
+        text = self.feature.read_text(encoding="utf-8")
+        self.assertEqual(ph.parse_frontmatter(text)["status"], "done")
+        self.assertIn("Fresh at close: yes", text)
+        self.assertEqual(ph.check(self.root, stem=self.stem), [])
+
+    def test_close_done_with_risks_records_failures(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("import sys; sys.exit(2)"))
+        self.fill_size(self.feature)
+        self.assertEqual(ph.close_feature(self.resolved, self.stem, "done-with-risks"), [])
+        text = self.feature.read_text(encoding="utf-8")
+        self.assertEqual(ph.parse_frontmatter(text)["status"], "done-with-risks")
+        self.assertIn("failed at close", text)
+        self.assertIn("Fresh at close: no", text)
+
+    def test_closed_feature_survives_later_code_change(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        self.set_team_line("1 role session (complete 1)")
+        self.assertEqual(ph.close_feature(self.resolved, self.stem, "done"), [])
+        (self.repo / "README.md").write_text("later change\n", encoding="utf-8")
+        self.assertEqual(ph.check(self.root, stem=None), [])
+
+    def test_close_local_mode_fresh_unknown(self) -> None:
+        cwd = self.base / "plain"
+        cwd.mkdir()
+        resolved = self.resolve(cwd, work="w", root_override=self.base / "localroot")
+        ph.ensure_layout(resolved.root)
+        f = ph.create_feature(resolved.root, "Local", request="", repo_name="", date="2026-10-20")
+        ph.run_verify(resolved, f.stem, self.py("print(1)"))
+        self.fill_size(f)
+        self.assertEqual(ph.close_feature(resolved, f.stem, "done"), [])
+        self.assertIn("Fresh at close: unknown", f.read_text(encoding="utf-8"))
+
+    def test_close_rejects_bad_status(self) -> None:
+        with self.assertRaises(ph.HistoryError):
+            ph.close_feature(self.resolved, self.stem, "finished")
+
+    def test_close_cli_exit_1_on_problems(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "close", "--feature", self.stem, "--status", "done"],
+            cwd=self.repo, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("no verification evidence", proc.stdout + proc.stderr)
+
+
 class FrontmatterTests(unittest.TestCase):
     def test_parse_frontmatter_simple_lists_and_scalars(self) -> None:
         text = "---\nhistoryDir: docs/pl\nverifyCommands:\n  - ./gradlew test\n  - npm test\nquoted: \"a: b\"\n---\nbody\n"
