@@ -4,7 +4,7 @@
 
 **`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 서브에이전트가 토론하고, 구현하고, 검증하고, 결정을 레포에 남깁니다**
 
-![version](https://img.shields.io/badge/version-0.5.0-blue)
+![version](https://img.shields.io/badge/version-0.5.1-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![history](https://img.shields.io/badge/history-docs%2Fpl%20in%20repo-7c3aed)
@@ -82,7 +82,7 @@ docs/pl/
   features/2026-10-20-partial-cancel.md   요청·범위·역할별 의견·종합·반론·결정·검증·리뷰·완료
   decisions/2026-10-20-use-queue.md       결정 1건 = 노트 1개 (대체되면 superseded 로 표시, 삭제 안 함)
   architecture.md                         현재 구조 메모
-  .runtime/                               git 제외 — 실행 원장·검증 증거·역할 메모·리뷰 diff
+  .runtime/                               git 제외 — 실행 원장·검증 증거·역할 메모·리뷰 diff (모두 pl_history.py 가 기록)
 ```
 
 - INDEX 파일이 없고 파일명이 `날짜-슬러그`라서 **병렬 브랜치가 머지 충돌을 내지 않습니다.** 목록은 `pl_history.py list`.

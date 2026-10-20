@@ -158,7 +158,7 @@ class ReferenceTests(unittest.TestCase):
 
     def test_history_md_documents_every_helper_command(self) -> None:
         text = (REFERENCES / "history.md").read_text(encoding="utf-8")
-        for command in ("where", "feature", "decision", "list", "verify", "close", "check"):
+        for command in ("where", "feature", "decision", "list", "current", "ledger", "diff", "verify", "close", "check"):
             self.assertRegex(text, rf"`{command}\b", command)
         self.assertIn("docs/pl", text)
         self.assertIn(".runtime/", text)

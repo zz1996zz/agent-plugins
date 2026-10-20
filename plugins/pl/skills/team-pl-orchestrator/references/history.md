@@ -18,10 +18,11 @@ Run `where` first in every non-solo request; it prints the mode and root, create
   architecture.md                   committed; keep it current when the shape changes
   .runtime/                         git-ignored (self-ignoring .gitignore written by the helper)
     <feature stem>/
-      ledger.md                     Execution Ledger, Team Lifecycle, Wave Baselines
+      ledger.md                     Execution Ledger, Team Lifecycle, Wave Baselines (written by `ledger`)
       evidence.jsonl                verification runs (written by `verify`)
       memos/<agent id>.md           role memos (written by the host's memo-capture hook where it runs; else by the lead)
-      diff.patch                    the lead writes it before review (`git diff <base> -- . ':(exclude)<historyDir>'` plus uncommitted changes)
+      diff.patch                    review diff (written by `diff`)
+    current                         stem of the feature the lead is working on (written by `feature`/`current`, cleared by `close`)
 ```
 
 There is no index file. `list` builds the listing from frontmatter when you need it. Dates plus slugs keep parallel branches from colliding; two notes with the same slug on the same day are refused.
@@ -34,6 +35,11 @@ There is no index file. `list` builds the listing from frontmatter when you need
 | `feature "<title>" [--request "<text>"]` | Create the feature note and its runtime ledger; print the note path. Idempotent for the same title on the same day. |
 | `decision "<title>" --feature <stem> [--supersedes <file>]` | Create a decision note linked both ways (keep the title to a short noun phrase — it becomes the file name); a superseded note gets `status: superseded` and `superseded_by`, never deleted. |
 | `list [--type feature\|decision] [--status <s>]` | Listing from frontmatter. |
+| `current [--feature <stem>]` | Show or set the current feature. `feature` sets it; `close` clears it. `ledger` and `diff` default to it. |
+| `ledger row <task> [--owner] [--depends] [--deliverable] [--status] [--evidence]` | Insert or update one Execution Ledger row (keyed by task; omitted fields keep their value). Use it for Round 0 rows, after each wave, and at close. |
+| `ledger lifecycle <Spawned\|Replaced\|Partial\|Failed\|Not spawned> "<label (agent id)>"` | Append to a Team Lifecycle field — record every spawn, replacement, partial, failure, and planned-but-not-spawned role here; `close --status done` refuses when Partial or Failed is non-empty. |
+| `ledger baseline "<wave label>"` | Snapshot `git status --porcelain` under Wave Baselines before a delegated wave; the change-shape gate compares against it. |
+| `diff [--base <sha>]` | Write `.runtime/<stem>/diff.patch` (committed range from `--base` plus uncommitted and untracked changes, history root excluded) for review roles. |
 | `verify --feature <stem> -- <command...>` | Run a verification command, stream its output, record exit code, tail, and the working-tree fingerprint after the run; rewrite the note's Verification table. The exit code is the helper's exit code. One argument after `--` is a shell string (run with `sh -c`, recorded verbatim — use this form for `verifyCommands` entries, e.g. `-- "cd web && pnpm test"`); several arguments are an argv. |
 | `verify --feature <stem> --withdraw "<command>" --reason "<why>"` | Remove a wrongly chosen command from the required set; the withdrawal and reason stay in the table. `verifyCommands` entries cannot be withdrawn. |
 | `close --feature <stem> --status done\|done-with-risks\|blocked` | Run the closing checks; on success write the frontmatter `status` and stamp `Fresh at close`. `done` is refused when any required command's latest run failed, is stale (the working tree changed after it), or never ran; when the runtime ledger's Team Lifecycle lists a partial or failed role; when the Completion `Team:` line says `partial` or `failed`; or when a `<a \| b>` placeholder remains. `done-with-risks` and `blocked` always close (structural problems are printed as warnings) and record the failed/stale commands. |
@@ -49,7 +55,7 @@ Feature note (`features/`): frontmatter `type, title, status, date, owner, repo,
 
 Decision note (`decisions/`): frontmatter `type, title, status (accepted|superseded), date, owner, feature, supersedes, superseded_by`; sections Context · Options Considered · Decision · Rationale · Consequences · Validation · Open Questions.
 
-Runtime ledger (`.runtime/<stem>/ledger.md`): **Execution Ledger** table (`Task | Owner | Depends on | Deliverable | Status | Evidence`) — the only task state on both hosts; update it after every completed wave so work resumes after compaction. **Team Lifecycle** (`Spawned`, `Replaced`, `Partial`, `Failed`, `Not spawned` — labels with agent IDs). **Wave Baselines** (one `git status --porcelain` snapshot per wave, taken before the wave starts).
+Runtime ledger (`.runtime/<stem>/ledger.md`, written only through `ledger`): **Execution Ledger** table (`Task | Owner | Depends on | Deliverable | Status | Evidence`) — the only task state on both hosts; update it after every completed wave so work resumes after compaction. **Team Lifecycle** (`Spawned`, `Replaced`, `Partial`, `Failed`, `Not spawned` — labels with agent IDs). **Wave Baselines** (one `git status --porcelain` snapshot per wave, taken before the wave starts).
 
 ## Hygiene
 

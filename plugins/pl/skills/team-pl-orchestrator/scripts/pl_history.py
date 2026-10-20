@@ -28,6 +28,10 @@ FEATURE_STATUSES = ("in-progress", "done", "done-with-risks", "blocked")
 DECISION_STATUSES = ("accepted", "superseded")
 TEAM_CONFIG = Path(".agents") / "pl.md"
 LOCAL_CONFIGS = (Path(".agents") / "pl.local.md", Path(".claude") / "pl.local.md")
+KNOWN_TEAM_KEYS = {"historyDir", "verifyCommands", "protectedPaths"}
+KNOWN_LOCAL_KEYS = {"verifyCommands", "protectedPaths"}
+# 0.4.x per-user config.json keys (Obsidian/Notion backends). History now lives in the repo.
+LEGACY_CONFIG_KEYS = ("backend", "obsidian", "notion", "pending")
 
 
 class HistoryError(Exception):
@@ -293,7 +297,10 @@ def load_team_config(repo_top: Path) -> tuple[dict, list[str]]:
     if not path.is_file():
         return {}, []
     data, warnings = parse_frontmatter_simple(path.read_text(encoding="utf-8"))
-    return data, [f"{TEAM_CONFIG}: {w}" for w in warnings]
+    warnings = [f"{TEAM_CONFIG}: {w}" for w in warnings]
+    for key in sorted(set(data) - KNOWN_TEAM_KEYS):
+        warnings.append(f"{TEAM_CONFIG}: unknown key {key!r} ignored (known: {', '.join(sorted(KNOWN_TEAM_KEYS))})")
+    return data, warnings
 
 
 def load_local_config(repo_top: Path) -> tuple[dict, list[str]]:
@@ -310,6 +317,8 @@ def load_local_config(repo_top: Path) -> tuple[dict, list[str]]:
             reason = "history location is team-owned (.agents/pl.md)" if key == "historyDir" else "no longer used"
             warnings.append(f"{present[0]}: {key} ignored — {reason}")
             del data[key]
+    for key in sorted(set(data) - KNOWN_LOCAL_KEYS):
+        warnings.append(f"{present[0]}: unknown key {key!r} ignored (known: {', '.join(sorted(KNOWN_LOCAL_KEYS))})")
     return data, warnings
 
 
@@ -362,7 +371,14 @@ def resolve(
     history_root = None
     if config_path is not None and config_path.is_file():
         try:
-            history_root = json.loads(config_path.read_text(encoding="utf-8")).get("historyRoot")
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            history_root = config.get("historyRoot")
+            legacy = [k for k in LEGACY_CONFIG_KEYS if k in config]
+            if legacy:
+                warnings.append(
+                    f"{config_path}: 0.4.x backend keys ignored ({', '.join(legacy)}) — history now lives in the repository"
+                    " (docs/pl) or under historyRoot; the old vault/Notion data is untouched"
+                )
         except ValueError:
             warnings.append(f"{config_path}: invalid JSON ignored")
     if history_root:
@@ -584,6 +600,128 @@ def runtime_dir(root: Path, stem: str) -> Path:
     return root / ".runtime" / stem
 
 
+CURRENT_FILE = "current"
+LIFECYCLE_FIELDS = ("Spawned", "Replaced", "Partial", "Failed", "Not spawned")
+
+
+def current_stem(root: Path) -> str | None:
+    """The feature the lead is working on now (`.runtime/current`); None when unset or stale."""
+    path = root / ".runtime" / CURRENT_FILE
+    if not path.is_file():
+        return None
+    stem = path.read_text(encoding="utf-8").strip()
+    return stem if stem and (root / "features" / f"{stem}.md").is_file() else None
+
+
+def set_current(root: Path, stem: str) -> None:
+    stem = feature_stem(root, stem)
+    atomic_write(root / ".runtime" / CURRENT_FILE, stem + "\n")
+
+
+def clear_current(root: Path, stem: str) -> None:
+    if current_stem(root) == stem:
+        (root / ".runtime" / CURRENT_FILE).unlink(missing_ok=True)
+
+
+def _ledger_path(root: Path, stem: str) -> Path:
+    stem = feature_stem(root, stem)
+    path = runtime_dir(root, stem) / "ledger.md"
+    if not path.is_file():
+        atomic_write(path, LEDGER_TEMPLATE.format(stem=stem))
+    return path
+
+
+def ledger_row(root: Path, stem: str, *, task: str, owner: str | None = None, depends: str | None = None,
+               deliverable: str | None = None, status: str | None = None, evidence: str | None = None) -> None:
+    """Insert or update one Execution Ledger row keyed by Task; None keeps the existing cell."""
+    path = _ledger_path(root, stem)
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"(?ms)^## Execution Ledger\n(.*?)(?=^## |\Z)", text)
+    if not match:
+        raise HistoryError("ledger has no Execution Ledger section")
+    lines = match.group(1).splitlines()
+    header = [l for l in lines if l.startswith("|")][:2]
+    rows = {}
+    order = []
+    for line in lines:
+        if line.startswith("| ") and line not in header and not line.startswith("|---"):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) >= 6:
+                rows[cells[0]] = cells[:6]
+                order.append(cells[0])
+    task = single_line(task, "task")
+    existing = rows.get(task, [task, "", "", "", "pending", ""])
+    new = list(existing)
+    for index, value in enumerate((task, owner, depends, deliverable, status, evidence)):
+        if value is not None:
+            new[index] = single_line(value, "ledger cell", allow_empty=True).replace("|", "\\|")
+    if task not in rows:
+        order.append(task)
+    rows[task] = new
+    table = ["| Task | Owner | Depends on | Deliverable | Status | Evidence |", "|---|---|---|---|---|---|"]
+    table += ["| " + " | ".join(rows[k]) + " |" for k in order]
+    atomic_write(path, replace_or_insert_section(text, "Execution Ledger", "\n".join(table), "Team Lifecycle"))
+
+
+def ledger_lifecycle(root: Path, stem: str, *, field: str, value: str) -> None:
+    """Append `value` to one Team Lifecycle field (`; `-separated)."""
+    if field not in LIFECYCLE_FIELDS:
+        raise HistoryError(f"lifecycle field must be one of {', '.join(LIFECYCLE_FIELDS)}: got {field!r}")
+    path = _ledger_path(root, stem)
+    text = path.read_text(encoding="utf-8")
+    value = single_line(value, "value")
+    pattern = re.compile(rf"(?m)^-[ \t]*{re.escape(field)}:[ \t]*(.*)$")
+    match = pattern.search(text)
+    if not match:
+        raise HistoryError(f"ledger has no `- {field}:` line")
+    current = match.group(1).strip()
+    joined = f"{current}; {value}" if current else value
+    atomic_write(path, text[: match.start()] + f"- {field}: {joined}" + text[match.end():])
+
+
+def ledger_baseline(root: Path, stem: str, *, label: str, porcelain: str | None = None) -> str:
+    """Record a `git status --porcelain` snapshot under Wave Baselines; returns the snapshot."""
+    path = _ledger_path(root, stem)
+    label = single_line(label, "label")
+    if porcelain is None:
+        top = git_toplevel(root)
+        porcelain = _git_out(top, "status", "--porcelain") if top else ""
+    text = path.read_text(encoding="utf-8")
+    block = f"### {label}\n\n```\n{porcelain.rstrip()}\n```\n"
+    match = re.search(r"(?ms)^## Wave Baselines\n(.*?)(?=^## |\Z)", text)
+    body = (match.group(1).rstrip() + "\n\n" + block) if match and match.group(1).strip() else block
+    atomic_write(path, replace_or_insert_section(text, "Wave Baselines", body))
+    return porcelain
+
+
+def write_diff(resolved: Resolved, stem: str, *, base: str | None) -> Path:
+    """Write the review diff (committed range from `base` plus uncommitted and untracked changes,
+    history root excluded) to `.runtime/<stem>/diff.patch`."""
+    stem = feature_stem(resolved.root, stem)
+    if resolved.repo_top is None:
+        raise HistoryError("diff needs a git repository")
+    top = resolved.repo_top
+    try:
+        rel = resolved.root.resolve().relative_to(top.resolve()).as_posix()
+        exclude = [f":(exclude){rel}"]
+    except ValueError:
+        exclude = []
+    parts = []
+    if base:
+        parts.append(_git_out(top, "diff", base, "--", ".", *exclude))
+    else:
+        parts.append(_git_out(top, "diff", "HEAD", "--", ".", *exclude))
+    untracked = _git_out(top, "ls-files", "--others", "--exclude-standard", "--", ".", *exclude)
+    for name in sorted(filter(None, untracked.splitlines())):
+        # --no-index exits 1 when the files differ (always, against /dev/null); the output is still the patch
+        proc = subprocess.run(["git", "-C", str(top), "diff", "--no-index", "--", "/dev/null", name],
+                              capture_output=True, text=True, check=False)
+        parts.append(proc.stdout)
+    patch = runtime_dir(resolved.root, stem) / "diff.patch"
+    atomic_write(patch, "".join(p for p in parts if p))
+    return patch
+
+
 def feature_stem(root: Path, ref: str) -> str:
     """Accept a stem, a file name, a history-relative path, or an absolute path."""
     name = Path(ref).name
@@ -615,6 +753,7 @@ def create_feature(root: Path, title: str, *, request: str, repo_name: str, date
     ledger = runtime_dir(root, path.stem) / "ledger.md"
     if not ledger.exists():
         atomic_write(ledger, LEDGER_TEMPLATE.format(stem=path.stem))
+    atomic_write(root / ".runtime" / CURRENT_FILE, path.stem + "\n")
     return path
 
 
@@ -912,6 +1051,41 @@ def withdraw(resolved: Resolved, stem: str, command: str, reason: str) -> None:
     _write_verification(resolved, stem)
 
 
+def cmd_current(args: argparse.Namespace) -> int:
+    resolved = _resolved_from_args(args)
+    if args.feature:
+        set_current(resolved.root, args.feature)
+    stem = current_stem(resolved.root)
+    print(stem or "(none)")
+    return 0
+
+
+def cmd_ledger(args: argparse.Namespace) -> int:
+    resolved = _resolved_from_args(args)
+    stem = args.feature or current_stem(resolved.root)
+    if not stem:
+        raise HistoryError("no feature given and no current feature")
+    if args.ledger_command == "row":
+        ledger_row(resolved.root, stem, task=args.task, owner=args.owner, depends=args.depends,
+                   deliverable=args.deliverable, status=args.status, evidence=args.evidence)
+    elif args.ledger_command == "lifecycle":
+        ledger_lifecycle(resolved.root, stem, field=args.field, value=args.value)
+    elif args.ledger_command == "baseline":
+        snapshot = ledger_baseline(resolved.root, stem, label=args.label)
+        print(snapshot.rstrip())
+    print(runtime_dir(resolved.root, feature_stem(resolved.root, stem)) / "ledger.md")
+    return 0
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    resolved = _resolved_from_args(args)
+    stem = args.feature or current_stem(resolved.root)
+    if not stem:
+        raise HistoryError("no feature given and no current feature")
+    print(write_diff(resolved, stem, base=args.base))
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     resolved = _resolved_from_args(args)
     if args.withdraw:
@@ -1091,6 +1265,7 @@ def close_feature(resolved: Resolved, stem: str, status: str) -> list[str]:
     _write_verification(resolved, stem, closing=stamp)
     text = path.read_text(encoding="utf-8")
     atomic_write(path, _set_frontmatter_field(text, "status", status))
+    clear_current(resolved.root, stem)
     return []
 
 
@@ -1167,6 +1342,35 @@ def build_parser() -> argparse.ArgumentParser:
     decision.add_argument("--date")
     decision.add_argument("--work")
     decision.set_defaults(func=cmd_decision)
+
+    current = sub.add_parser("current", help="show or set the feature the lead is working on")
+    current.add_argument("--feature", help="set the current feature (stem, file name, or path)")
+    current.add_argument("--work")
+    current.set_defaults(func=cmd_current)
+
+    ledger = sub.add_parser("ledger", help="update the runtime ledger (rows, lifecycle, wave baselines)")
+    ledger.add_argument("--feature", help="defaults to the current feature")
+    ledger.add_argument("--work")
+    ledger_sub = ledger.add_subparsers(dest="ledger_command", required=True)
+    row = ledger_sub.add_parser("row", help="insert or update an Execution Ledger row")
+    row.add_argument("task")
+    row.add_argument("--owner")
+    row.add_argument("--depends")
+    row.add_argument("--deliverable")
+    row.add_argument("--status")
+    row.add_argument("--evidence")
+    life = ledger_sub.add_parser("lifecycle", help="append to a Team Lifecycle field")
+    life.add_argument("field", choices=LIFECYCLE_FIELDS)
+    life.add_argument("value")
+    base = ledger_sub.add_parser("baseline", help="record git status --porcelain under Wave Baselines")
+    base.add_argument("label")
+    ledger.set_defaults(func=cmd_ledger)
+
+    diff = sub.add_parser("diff", help="write .runtime/<stem>/diff.patch for review roles")
+    diff.add_argument("--feature", help="defaults to the current feature")
+    diff.add_argument("--base", help="commit to diff from (default: HEAD + uncommitted + untracked)")
+    diff.add_argument("--work")
+    diff.set_defaults(func=cmd_diff)
 
     lst = sub.add_parser("list", help="list notes from frontmatter (no index file)")
     lst.add_argument("--type", choices=("feature", "decision"))

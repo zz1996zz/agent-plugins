@@ -4,6 +4,7 @@
 role opinions and merge reviewer findings from files instead of memory.
 
 - Only fires for pl role agents (`agent_type` matching ^pl:team-pl-).
+- Target feature: `.runtime/current` (set by `pl_history.py feature`/`current`), else the most recently touched ledger.
 - On SubagentStop the memo is `last_assistant_message`; in auto mode the delivered
   report travels through the SubagentHandback tool instead, so the same script is
   also registered as a PostToolUse hook on that tool and reads `tool_input.message`.
@@ -45,6 +46,12 @@ def newest_runtime_dir(root: Path) -> Path | None:
     runtime = root / ".runtime"
     if not runtime.is_dir():
         return None
+    # the lead's current feature (`pl_history.py feature` / `current` writes it) wins over recency
+    pointer = runtime / "current"
+    if pointer.is_file():
+        stem = pointer.read_text(encoding="utf-8").strip()
+        if stem and (runtime / stem / "ledger.md").is_file():
+            return runtime / stem
     candidates = [p for p in runtime.iterdir() if p.is_dir() and (p / "ledger.md").is_file()]
     if not candidates:
         return None

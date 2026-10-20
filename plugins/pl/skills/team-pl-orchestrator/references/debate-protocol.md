@@ -4,13 +4,13 @@ The discussion-to-close loop for `full` work. `light` work runs only Implementat
 
 ## Round 0: Brief
 
-Before spawning, write into the runtime ledger (`history.md`, Runtime ledger) one Execution Ledger row per planned memo: subject `[<feature stem>] <role> memo`, owner label, dependencies, bounded deliverable, success criteria, `read-only` or the editable files, and `Run: <command>` when a runnable check decides completion. Then build each brief from the Role brief contract in `roles.md` and spawn the stage's roles in one message (host mapping in SKILL.md Platform Behavior).
+Before spawning, add one Execution Ledger row per planned memo with `pl_history.py ledger row` (`history.md`): task `<role>-memo`, owner label, dependencies, deliverable (the memo plus `read-only` or the editable files, and `Run: <command>` when a runnable check decides completion), status `pending`. Then build each brief from the Role brief contract in `roles.md` and spawn the stage's roles in one message (host mapping in SKILL.md Platform Behavior).
 
 ## Round 1: Independent memos
 
 Each role answers independently; do not show other roles' memos during Round 1. A memo is the session's final response (where the host's memo-capture hook runs, it is also saved under `.runtime/<stem>/memos/`; read those files when present). A session that returns a partial result (`maxTurns`) is resumed once to finish, or recorded as `partial`.
 
-Record every delivered memo as a summary under Roles and Opinions in the feature note, and mark its ledger row done.
+After each spawn, `ledger lifecycle Spawned "<label> (<agent id>)"`; a partial or failed session goes under `Partial`/`Failed`. Record every delivered memo as a summary under Roles and Opinions in the feature note, and set its ledger row to `done` with the evidence (`ledger row <task> --status done --evidence "<memo id>"`).
 
 ## Synthesis
 
@@ -38,11 +38,11 @@ Then convert the decisions into dependency-aware Execution Ledger rows with one 
 
 Prefer one final integrator: the lead owns integration and prevents same-file overlap. Delegate edits only with isolated file or module ownership; role sessions share the working directory, so never let two sessions edit the same file. Run only unblocked rows in parallel. At every interface handoff the producing session's memo carries the exact contract and evidence; the lead forwards it to the consumer when it resumes or spawns that session.
 
-**Wave baseline and change-shape gate.** Before each delegated wave, save `git status --porcelain` under Wave Baselines in the runtime ledger. After the wave, before accepting any deliverable, diff the new `git status --porcelain` against that baseline; every path that appeared or changed must fall inside the union of the wave's ownership lists, excluding the history root and paths the lead itself edited, and must not touch `protectedPaths`. A path outside every list is an ownership violation regardless of whether the change looks correct: do not accept the wave, ask the owning session to revert or justify it, and record the incident in the ledger. Update the Execution Ledger after each completed wave.
+**Wave baseline and change-shape gate.** Before each delegated wave, run `pl_history.py ledger baseline "<wave label>"` (it saves `git status --porcelain` under Wave Baselines). After the wave, before accepting any deliverable, diff the new `git status --porcelain` against that baseline; every path that appeared or changed must fall inside the union of the wave's ownership lists, excluding the history root and paths the lead itself edited, and must not touch `protectedPaths`. A path outside every list is an ownership violation regardless of whether the change looks correct: do not accept the wave, ask the owning session to revert or justify it, and record the incident in the ledger. Update the Execution Ledger after each completed wave.
 
 ## Review Loop
 
-1. Write `.runtime/<stem>/diff.patch` (`history.md`, Layout) and summarize the diff.
+1. Run `pl_history.py diff [--base <sha>]` (writes `.runtime/<stem>/diff.patch`) and summarize the diff.
 2. Spawn `team-pl-code-reviewer` only now, with scoped context: accepted requirements, PL decisions, the `BASE..HEAD` range, the diff summary, and the diff path — never the lead's session history or reasoning, so the review judges the artifact. Each accepted requirement and decision becomes a `Gate 1 items` entry the reviewer answers individually.
 3. Both gates must pass: Gate 1 (spec/decision compliance) outranks Gate 2 (quality). Fix Critical before any progress and Important before closing; record Minor. After every fix, re-run the required verification commands through `verify` before re-review — evidence older than the fix is stale.
 4. Resume `pl-qa` for a coverage review only when test files changed or Verify found a failure (in `light` work, where no QA session exists, the lead does this check itself). Add `team-pl-security-reviewer` (`diff-review` mode) or `team-pl-integration-reviewer` when the changed surface touches their lanes.

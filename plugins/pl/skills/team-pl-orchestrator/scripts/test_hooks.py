@@ -81,6 +81,17 @@ class MemoCaptureTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("Test plan: y", (self.memos / "h1.md").read_text(encoding="utf-8"))
 
+    def test_memo_capture_targets_current_feature_not_newest(self) -> None:
+        other = ph.create_feature(self.resolved.root, "Other", request="", repo_name="x", date="2026-10-20")
+        ph.set_current(self.resolved.root, self.feature.stem)
+        # touch the other ledger so "newest" would pick it
+        ledger = ph.runtime_dir(self.resolved.root, other.stem) / "ledger.md"
+        ledger.write_text(ledger.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        proc = self.run_hook(self.stop_payload("Status: DONE\nx"))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue((self.memos / "abc123.md").is_file())
+        self.assertFalse((ph.runtime_dir(self.resolved.root, other.stem) / "memos" / "abc123.md").exists())
+
     def test_memo_capture_fails_open_outside_history(self) -> None:
         plain = self.base / "plain"
         plain.mkdir()
