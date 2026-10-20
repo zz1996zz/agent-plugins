@@ -1,131 +1,54 @@
 # Debate Protocol
 
-Use this protocol to create productive role-agent discussion without uncontrolled chatter.
-
-## Contents
-
-- Round 0: Brief
-- Round 1: Independent Role Memos
-- Synthesis
-- Round 2: Critique
-- Role Session Reset
-- Decision
-- Implementation
-- Review Loop
-- Close
-- Memory Hygiene
+The discussion-to-close loop for `full` work. `light` work runs only Implementation, Review Loop (one cycle), and Close.
 
 ## Round 0: Brief
 
-Create a shared brief:
-- User request
-- Relevant memory
-- Current repo facts
-- Constraints
-- Proposed role roster
-- Predictable role session runtime names
-- Expected deliverables
-- Acceptance criteria and evidence required
+Before spawning, write into the runtime ledger (`history.md`, Runtime ledger) one Execution Ledger row per planned memo: subject `[<feature stem>] <role> memo`, owner label, dependencies, bounded deliverable, success criteria, `read-only` or the editable files, and `Run: <command>` when a runnable check decides completion. Then build each brief from the Role brief contract in `roles.md` and spawn the stage's roles in one message (host mapping in SKILL.md Platform Behavior).
 
-Create one ledger entry per independent memo (a shared task where the host has one; otherwise the same fields go into the spawn brief and the feature note). Each entry must state:
-- A subject prefixed with `[<feature-slug>]`
-- Task ID and owner
-- Dependencies
-- Bounded deliverable
-- Success criteria
-- Files the role session may edit, or `read-only`
-- The verification command that decides completion (`Run: <command>`), when the task has a runnable check
+## Round 1: Independent memos
 
-## Round 1: Independent Role Memos
+Each role answers independently; do not show other roles' memos during Round 1. A memo is the session's final response (on Claude Code the SubagentStop hook also saves it under `.runtime/<stem>/memos/`; read those files when present). A session that returns a partial result (`maxTurns`) is resumed once to finish, or recorded as `partial`.
 
-Ask each selected role to respond independently. Do not show other role outputs during Round 1.
-
-Each memo leads with its `Status:` line and covers the deliverable items defined in the role's definition body.
-
-The delivery contract in `references/roles.md` governs every memo. Never treat an idle or finished signal alone as a delivered memo: if a role session goes idle without one, run the idle-without-result triage in `references/team-lifecycle.md` (ledger state, host recovery steps, one explicit delivery nudge) before any reset.
+Record every delivered memo as a summary under Roles and Opinions in the feature note, and mark its ledger row done.
 
 ## Synthesis
 
-The PL lead summarizes:
-- Agreements
-- Conflicts
-- Hidden assumptions
-- Decisions required
-- Proposed implementation plan
-- Proposed verification plan
+The lead writes the Synthesis section: agreements; conflicts with both sides' evidence (never average them or silently pick a winner); hidden assumptions; decisions required; the proposed implementation plan; the proposed verification plan; and one merged list of everything the roles marked `Unverifiable statically` — role sessions cannot check runtime wiring, and that check is the lead's in Verify.
 
-Read overlap as signal, not duplication. Lanes are disjoint by design (`references/roles.md` Lane Discipline), so when two roles independently raise the same point it is a defect visible from two directions — it goes to the top of the work list, not into a deduplicated pile. When two roles' advice pulls in opposite directions, carry both sides' evidence into the decision; do not silently pick a winner or average them. Collect every item a role marked as unverifiable from static reading into one list — role sessions cannot check runtime wiring, and that check is the lead's.
+Overlap is signal: lanes are disjoint (`roles.md`), so the same finding from two roles is a defect visible from two directions and goes to the top of the work list.
 
-## Round 2: Critique
+## User decisions
 
-Use the host's peer-challenge channel for material critique instead of sending every message to everyone. Assign one peer challenge per material disagreement or risky untested assumption surfaced in synthesis — not one per role as a quota — and skip Round 2 when synthesis surfaced none. The recipient answers each challenge. Ask for:
-- What is wrong or missing?
-- Which decision is risky?
-- Which simpler option should be considered?
-- What must be tested?
+Collect every `Status: NEEDS_DECISION` and every item under the product analyst's `Decisions needed` that concerns product scope, priority, or user-visible behavior, and ask the user once, in one batched message. The lead decides technical questions itself. Do not proceed to Decide while a user-facing decision is open; if the user cannot answer now, close as `blocked` with the questions listed.
 
-Each challenge must name the claim, cite repo or requirement evidence, and state what would change the recommendation. Each response must accept, reject, or narrow the claim with evidence. Both role sessions then deliver the PL a concise revised conclusion. The delivery contract and the idle-without-result triage apply to challenge answers and revised conclusions exactly as to Round 1 memos.
+## Round 2: Challenge
 
-Run more rounds only when there is a material unresolved conflict. Stop when the PL can state the selected option, rejected alternatives, risks, and validation plan without relying on unresolved assumptions.
+Assign one challenge per material disagreement or risky untested assumption surfaced in synthesis — not one per role as a quota — and skip Round 2 when synthesis surfaced none. A challenge names the claim, cites repo or requirement evidence, and states what would change the recommendation. Deliver it by resuming the target session (agent ID) on either host; the answer accepts, rejects, or narrows the claim with evidence and restates the revised conclusion. Run more rounds only for a material unresolved conflict; stop when the lead can state the selected option, rejected alternatives, risks, and validation plan without unresolved assumptions.
 
-Record the outcome either way in the feature note's `### Round 2` section: the challenges assigned, or `skipped — no material conflict in synthesis`. Left blank, a correctly skipped round is indistinguishable later from one that ran unrecorded or from conflicts the lead never noticed.
+Record the outcome in the feature note's Challenges section either way: the challenges and their effect, or `skipped — no material conflict in synthesis`.
 
-## Role Session Reset
+## Decide
 
-Use reset instead of repeated prompting when a role session gives stale, irrelevant, wrong-role, wrong-model, or obviously low-quality output. Reset targets bad output, not merely undelivered output; for an idle role session with no delivered memo, complete the idle-without-result triage in `references/team-lifecycle.md` first.
+The lead decides; do not average opinions. Choose by user goal, existing repo patterns, maintainability, risk, testability, reversibility. Record each durable decision with `pl_history.py decision` and one line under PL Decisions; a decision that replaces an earlier note supersedes it instead of deleting it.
 
-Before any reset, save useful facts from the role session's output into the PL synthesis, and settle or reassign its ledger entry without marking abandoned work complete. Then follow the replacement procedure in `references/team-lifecycle.md` under Role Session Health and Restart. Use at most one repair prompt before reset. Do not let one confused role session dominate the discussion.
-
-## Decision
-
-The PL lead decides. Do not average opinions. Choose the option that best fits:
-- User goal
-- Existing repo patterns
-- Maintainability
-- Risk
-- Testability
-- Reversibility
-
-Record durable decisions in memory.
-
-Before any edit, run an analyze gate: check that the decisions, the implementation plan, and the ledger entries are consistent — every decision maps to at least one entry, every entry traces back to the plan, and no accepted decision or required deliverable is missing an entry. Resolve mismatches before delegating work; a gap here surfaces later as unowned or contradictory implementation.
-
-Before delegated implementation, convert the decision into dependency-aware ledger entries. Assign one owner per task and one owner per file. For complex or risky edits, require plan approval before the implementation role session can edit.
+Then convert the decisions into dependency-aware Execution Ledger rows with one owner per task and one owner per file, and only then run the analyze gate: every decision maps to at least one row, every row traces back to the plan, and no accepted decision or required deliverable lacks a row. Resolve mismatches before any edit. For complex or risky delegated edits, require the role's plan (its intended paths and approach) before it edits.
 
 ## Implementation
 
-Prefer one final integrator. Role sessions share the working directory, so avoid having multiple agents edit the same files. Delegate implementation edits only when the lead can isolate ownership by file or module. Use separate worktrees only when the PL explicitly provisions and coordinates them.
+Prefer one final integrator: the lead owns integration and prevents same-file overlap. Delegate edits only with isolated file or module ownership; role sessions share the working directory, so never let two sessions edit the same file. Run only unblocked rows in parallel. At every interface handoff the producing session's memo carries the exact contract and evidence; the lead forwards it to the consumer when it resumes or spawns that session.
 
-Run only unblocked tasks in parallel. At every interface handoff, the producing role session delivers the exact contract and evidence to the consumer through the host's peer-challenge channel (via the lead where sessions cannot message each other). Update the feature-note execution ledger after each completed wave so work can resume safely after compaction.
-
-**Change-shape gate.** After each delegated wave, before accepting any deliverable, run `git status --porcelain` (it covers modified and untracked files) and compare every path against the union of the file/module ownership lists on that wave's ledger entries, plus `protectedPaths` from `pl.local.md` (Repo-local config in SKILL.md) when present. A path outside every list is an ownership violation regardless of whether the change looks correct: do not accept the wave, ask the owning role session to revert the path or justify it, and record the incident in the execution ledger. The one-owner-per-file rule above is only as real as this check — without it a violation surfaces later as a conflicting edit or not at all.
-
-Do not coordinate role work through ad hoc messages alone: every active role session must own a visible ledger entry. After the lead accepts a role session's final deliverable and no revision, dependency, or re-review remains, ask that role session to close instead of retaining an idle session.
+**Wave baseline and change-shape gate.** Before each delegated wave, save `git status --porcelain` under Wave Baselines in the runtime ledger. After the wave, before accepting any deliverable, diff the new `git status --porcelain` against that baseline; every path that appeared or changed must fall inside the union of the wave's ownership lists, excluding the history root and paths the lead itself edited, and must not touch `protectedPaths`. A path outside every list is an ownership violation regardless of whether the change looks correct: do not accept the wave, ask the owning session to revert or justify it, and record the incident in the ledger. Update the Execution Ledger after each completed wave.
 
 ## Review Loop
 
-After implementation:
-1. Summarize the diff.
-2. Spawn code-reviewer on the final diff and accepted requirements; do not keep it idle before a diff exists. Brief it with scoped context only — accepted requirements and PL decisions, the `BASE_SHA..HEAD_SHA` range, and the diff summary — and never the lead's session history or reasoning trace, so the review judges the artifact, not the process. Convert the brief into a per-gate rubric: each accepted requirement and PL decision becomes a checkable Gate 1 item, and the Gate 2 quality dimensions become items, so the reviewer returns a verdict per item instead of free-form impressions.
-3. Require two ordered review gates, both of which must pass:
-   - Gate 1 — spec/decision compliance: the diff satisfies the accepted requirements and PL decisions, with no silent scope drift.
-   - Gate 2 — code quality: correctness, maintainability, behavior changes, and missing tests.
-   A clean Gate 2 pass does not accept work that fails Gate 1. Rank findings by severity: fix Critical before any progress, Important before closing, and record Minor.
-4. Ask QA to verify test coverage.
-5. Ask data-engineer, integration-reviewer, or security-reviewer when the changed surface touches those areas.
-6. Validate reviewer findings against the repo, fix material issues, rerun relevant tests, and re-review changed risk surfaces.
-7. When more than one reviewer ran, merge their reports the way Synthesis does: overlapping findings first (highest confidence — the lanes are disjoint), conflicting advice with both sides' grounds for the user to decide, one merged list of items no reviewer could verify statically, then a fix order by severity and blast radius. Relay each reviewer's findings as given — do not re-tier or reword them, and do not fold your own findings into their sections.
+1. Write `.runtime/<stem>/diff.patch` (`history.md`, Layout) and summarize the diff.
+2. Spawn `team-pl-code-reviewer` only now, with scoped context: accepted requirements, PL decisions, the `BASE..HEAD` range, the diff summary, and the diff path — never the lead's session history or reasoning, so the review judges the artifact. Each accepted requirement and decision becomes a `Gate 1 items` entry the reviewer answers individually.
+3. Both gates must pass: Gate 1 (spec/decision compliance) outranks Gate 2 (quality). Fix Critical before any progress and Important before closing; record Minor.
+4. Resume `pl-qa` for a coverage review only when test files changed or Verify found a failure. Add `team-pl-security-reviewer` (`diff-review` mode) or `team-pl-integration-reviewer` when the changed surface touches their lanes.
+5. The lead validates every finding against the repo and may drop one with written grounds; relay each reviewer's findings as given, with the lead's verdict beside them. Only conflicts that touch product scope go to the user. With several reviewers, merge like Synthesis: overlapping findings first, conflicting advice with both sides' grounds, then one list of items no reviewer could verify statically, then a fix order by severity and blast radius.
+6. **At most three cycles.** A cycle is review → fix → re-review, recorded in the feature note's Review section as `cycle N`. Re-review only when the fix changed the risk surface. If Critical or Important findings remain after cycle 3, stop fixing: list them under Review, close as `done-with-risks` when the implementation works and `blocked` when it is unsafe, and hand the decision to the user.
 
 ## Close
 
-Close the feature under `SKILL.md`: confirm no required task is pending or merely stale, read fresh verification output instead of trusting role session completion claims, bring feature and decision notes up to date, then follow the completion-or-cancellation checklist in `references/team-lifecycle.md` Team Lifecycle (close, force-close confirmation, lifecycle evidence) and run the memory link/index check. Classify the result under the Standing Completion Contract.
-
-## Memory Hygiene
-
-Write summaries, not transcripts. Do not store secrets, credentials, or raw command logs. Durable notes should help a future LLM answer:
-- What did we decide?
-- Why?
-- What alternatives were considered?
-- What changed?
-- How was it validated?
-- What remains uncertain?
+Settle every ledger row (never mark abandoned work complete; record abandonment). Fill Completion's `Team:` line from the runtime ledger's Team Lifecycle. Bring feature and decision notes up to date, then run `pl_history.py close` with the status the Standing Completion Contract in SKILL.md yields. Stop any role session still running; completed sessions need nothing.
