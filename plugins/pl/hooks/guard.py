@@ -461,6 +461,9 @@ def judge(argv: list[str]) -> str | None:
         # `git config core.hooksPath` alone reads; a value after the key (or an explicit write flag) sets it
         if key_index is not None and (writes or len(positional) > key_index + 1):
             return "훅 우회(config core.hooksPath)"
+        alias_index = next((i for i, t in enumerate(positional) if t.lower().startswith("alias.")), None)
+        if alias_index is not None and (writes or len(positional) > alias_index + 1):
+            return "별칭 우회(config alias.*)"
     return None
 
 

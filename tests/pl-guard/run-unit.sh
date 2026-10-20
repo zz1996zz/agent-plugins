@@ -139,6 +139,8 @@ b42-rm-rf-dot-slash-git @@@ rm -rf ./.git/                                      
 b43-herestring          @@@ cat <<< hello\ngit reset --hard                             @@@ DENY
 b44-quoted-heredoc-text @@@ echo '\''a <<EOF'\''\ngit reset --hard                            @@@ DENY
 b45-config-hookspath-set @@@ git config core.hooksPath /tmp/x                           @@@ DENY
+b46-config-alias-set    @@@ git config alias.nuke "reset --hard"                       @@@ DENY
+f08-config-alias-get    @@@ git config alias.nuke                                      @@@ ALLOW
 f06-config-hookspath-get @@@ git config core.hooksPath                                  @@@ ALLOW
 f07-config-get-flag     @@@ git config --get core.hooksPath                             @@@ ALLOW
 f01-msg-semicolon       @@@ git commit -m "docs; git push --force is banned"           @@@ ALLOW
