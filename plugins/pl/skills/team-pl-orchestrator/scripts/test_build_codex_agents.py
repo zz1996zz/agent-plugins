@@ -6,9 +6,14 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
+
+if sys.version_info < (3, 11):  # tomllib 은 3.11+. 런타임 헬퍼와 달리 생성기는 개발 도구다.
+    print("skipped: build_codex_agents tests need Python 3.11+ (tomllib)")
+    sys.exit(0)
+
+import tomllib  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))

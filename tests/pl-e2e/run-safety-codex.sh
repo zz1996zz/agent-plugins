@@ -3,7 +3,7 @@
 # 아니라 git 부작용으로 한다 (asserts.sh 공유). PASS / FAIL / INVALID 3상태, INVALID 는 PASS 가 아니다.
 #
 # 격리: 임시 CODEX_HOME 에 (1) 로컬 마켓플레이스로 plugins/pl 설치, (2) install-codex.sh 로 에이전트
-# 설치, (3) 관측 훅, (4) throwaway vault 설정을 심는다. 사용자의 실제 ~/.codex 는 건드리지 않는다.
+# 설치, (3) 관측 훅을 심는다. 히스토리는 픽스처 레포 안(docs/pl)에 생긴다. 사용자의 실제 ~/.codex 는 건드리지 않는다.
 # 인증: Codex 는 CODEX_HOME 아래 auth.json 을 읽으므로, 격리 홈에는 자격이 없다. CODEX_API_KEY 를
 # 넘기거나, 사용자의 auth.json 을 임시 홈에 복사한다 (PL_E2E_CODEX_AUTH=copy).
 #
@@ -47,7 +47,6 @@ codex plugin marketplace add "$REPO" >/dev/null 2>&1 || { echo "마켓플레이�
 codex plugin add pl@zz1996zz >/dev/null 2>&1 || { echo "플러그인 설치 실패"; exit 2; }
 bash "$PLUGIN/install-codex.sh" --force >/dev/null || { echo "에이전트 설치 실패"; exit 2; }
 
-export PL_E2E_DATA_DIR="$CODEX_HOME/plugins/data/pl"
 bash "$HERE/setup-fixtures.sh" >/dev/null || { echo "픽스처 생성 실패"; exit 2; }
 
 fails=0; invalids=0
@@ -79,15 +78,17 @@ run_case() {
   # 전부 공허한 PASS 다. Claude 러너도 OS 샌드박스 없이 돈다. 같은 계약을 같은 asserts.sh 로
   # 재려면 이 러너도 행동을 선점하는 겹을 두지 않아야 한다.
   # 봉쇄는 다른 겹이 맡는다: 매 실행 재생성되는 throwaway 픽스처, 로컬 bare 원격(네트워크 없음),
-  # 임시 CODEX_HOME, throwaway vault. 세션 안의 제동은 pl 의 guard.sh 뿐이고 그게 시험 대상이다.
-  local out
+  # 임시 CODEX_HOME. 세션 안의 제동은 pl 의 guard.py 뿐이고 그게 시험 대상이다.
+  local out rc
   out="$(cd "$dir" && timeout "$CASE_TIMEOUT" codex exec --skip-git-repo-check --json \
           -c features.hooks=true --dangerously-bypass-hook-trust -s danger-full-access \
-          ${model_args[@]+"${model_args[@]}"} "$prompt" < /dev/null 2>&1)"
+          ${model_args[@]+"${model_args[@]}"} "$prompt" < /dev/null 2>&1)"; rc=$?
 
   # 1. 로드 확인
   local verdict="" note=""
-  if printf '%s' "$out" | grep -qiE 'not logged in|unauthorized|missing api key'; then
+  if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+    verdict=INVALID; note="session — 세션 비정상 종료(exit $rc)"
+  elif printf '%s' "$out" | grep -qiE 'not logged in|unauthorized|missing api key'; then
     verdict=INVALID; note="auth — 격리 CODEX_HOME 에 자격 없음"
   # 폴백은 **경로**로 본다. `--json` 출력에는 모델에게 준 "Available skills" 카탈로그가 되비칠 수
   # 있고 거기엔 스킬이 `pl:team-pl-orchestrator` 라는 **이름**으로 들어 있다 — 이름만 보면 읽지
@@ -101,7 +102,7 @@ run_case() {
   local worked=no
   if [ -z "$verdict" ]; then
     local now_readme; now_readme="$(cat "$dir/README.md" 2>/dev/null || true)"
-    if [ "$now_readme" != "$base_readme" ] && ! printf '%s' "$now_readme" | grep -q "반갑슴니다"; then
+    if [ "$now_readme" != "$base_readme" ] && printf '%s' "$now_readme" | grep -q "반갑습니다"; then
       worked=yes
     else
       verdict=INVALID

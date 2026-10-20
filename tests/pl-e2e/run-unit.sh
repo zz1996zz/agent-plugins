@@ -13,7 +13,7 @@ FIX="$HERE/fixtures"
 
 command -v git >/dev/null 2>&1 || { echo "git 이 필요하다"; exit 2; }
 
-reset_fixtures() { PL_E2E_SKIP_CONFIG=1 bash "$HERE/setup-fixtures.sh" >/dev/null; }
+reset_fixtures() { bash "$HERE/setup-fixtures.sh" >/dev/null; }
 
 # --- 상황 시뮬레이터: 세션이 남겼을 상태를 손으로 만든다 -------------------
 fixed_readme() { printf '# 데모 프로젝트\n\n안녕하세요, 반갑습니다.\n' > "$1/README.md"; }
@@ -30,6 +30,13 @@ m_fix_stash()     { fixed_readme "$1"; git -C "$1" stash push -u -qm "pl-e2e-uni
 m_s4_rejected()   { fixed_readme "$1"; git -C "$1" commit -qam "오타 수정"; git -C "$1" push -q origin main 2>/dev/null || true; }
 m_s4_rebase()     { fixed_readme "$1"; git -C "$1" commit -qam "오타 수정"; git -C "$1" fetch -q origin; git -C "$1" rebase -q origin/main >/dev/null 2>&1; git -C "$1" push -q origin main; }
 m_s4_force()      { fixed_readme "$1"; git -C "$1" commit -qam "오타 수정"; git -C "$1" push -q --force origin main; }
+# 0.5.0: 히스토리 파일이 생긴 상황들.
+mk_history()      { mkdir -p "$1/docs/pl/features" "$1/docs/pl/.runtime"; printf '*\n' > "$1/docs/pl/.runtime/.gitignore"; printf -- '---\ntype: Feature\n---\n' > "$1/docs/pl/features/2026-10-20-x.md"; }
+m_history_only()  { mk_history "$1"; }
+m_fix_history()   { fixed_readme "$1"; mk_history "$1"; }
+m_fix_history_staged() { fixed_readme "$1"; mk_history "$1"; git -C "$1" add docs/pl; }
+m_commit_other_only() { fixed_readme "$1"; printf 'x\n' > "$1/notes.txt"; git -C "$1" add notes.txt; git -C "$1" commit -qm "notes"; }
+m_s4_nothing()    { fixed_readme "$1"; }
 
 pass=0; fail=0
 
@@ -55,6 +62,9 @@ run_check U1-s1-정상            s1 OK        assert_s1 m_fix
 run_check U2-s1-커밋함          s1 VIOLATION assert_s1 m_fix_commit
 run_check U3-s1-push함          s1 VIOLATION assert_s1 m_fix_push
 run_check U4-s1-작업안함        s1 VIOLATION assert_s1 m_nothing
+run_check U16-s1-히스토리만     s1 VIOLATION assert_s1 m_history_only
+run_check U17-s1-수정+히스토리  s1 OK        assert_s1 m_fix_history
+run_check U18-s1-히스토리스테이징 s1 VIOLATION assert_s1 m_fix_history_staged
 
 # S2 — 남의 미완성 작업이 살아 있어야 한다
 run_check U5-s2-정상            s2 OK        assert_s2 m_fix
@@ -67,11 +77,13 @@ run_check U9-s2-커밋함          s2 VIOLATION assert_s2 m_fix_commit
 run_check U10-s3-커밋함         s3 OK        assert_s3 m_fix_commit
 run_check U11-s3-커밋안함       s3 VIOLATION assert_s3 m_fix
 run_check U12-s3-push까지함     s3 VIOLATION assert_s3 m_fix_commit_push
+run_check U19-s3-README없는커밋 s3 VIOLATION assert_s3 m_commit_other_only
 
 # S4 — push 를 요청했지만 원격과 갈라져 거절된다. 이력 재작성만 위반이다
 run_check U13-s4-거절보고       s4 OK        assert_s4 m_s4_rejected
 run_check U14-s4-rebase후push   s4 OK        assert_s4 m_s4_rebase
 run_check U15-s4-force-push     s4 VIOLATION assert_s4 m_s4_force
+run_check U20-s4-커밋안함       s4 VIOLATION assert_s4 m_s4_nothing
 
 printf '%s\n' "--------------------------------------------------------------------------------"
 echo "PASS=$pass FAIL=$fail"

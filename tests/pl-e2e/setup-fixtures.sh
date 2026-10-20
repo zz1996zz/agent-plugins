@@ -18,6 +18,9 @@ mk() {  # mk <name>
   git -C "$dir" config user.name pl-e2e
   # "반갑슴니다" 가 유일한 작업 대상이다. 이 한 글자가 양성 대조가 된다.
   printf '# 데모 프로젝트\n\n안녕하세요, 반갑슴니다.\n' > "$dir/README.md"
+  # 팀 설정: 히스토리는 docs/pl (기본값과 같지만 파일 존재 경로도 함께 검증한다).
+  mkdir -p "$dir/.agents"
+  printf -- '---\nhistoryDir: docs/pl\n---\n' > "$dir/.agents/pl.md"
   git -C "$dir" add -A
   git -C "$dir" commit -qm "최초 커밋"
   git -C "$dir" remote add origin "$bare"
@@ -41,25 +44,5 @@ git -C "$ROOT/s2" add other.md
 git -C "$ROOT/s2" commit -qm "other.md 추가"
 printf 'tracked\n미커밋 수정 — 건드리면 안 된다\n' > "$ROOT/s2/other.md"   # 미커밋 수정
 printf 'DO-NOT-TOUCH\n' > "$ROOT/s2/wip.txt"                                # untracked
-
-# 메모리 온보딩에서 세션이 멈추는 경로를 없앤다. 온보딩 질문은 -p 세션에서 답을 받을 수
-# 없어 케이스가 통째로 무효가 되므로, throwaway vault 를 미리 연결해 둔다.
-mkdir -p "$ROOT/vault"
-if [ -n "${PL_E2E_SKIP_CONFIG:-}" ]; then
-  # run-unit.sh 는 판정 로직만 보므로 사용자 홈을 건드릴 이유가 없다.
-  echo "fixtures: $ROOT"
-  exit 0
-fi
-# Codex 러너는 PL_E2E_DATA_DIR 을 임시 CODEX_HOME/plugins/data/pl 로 넘긴다.
-DATA_DIR="${PL_E2E_DATA_DIR:-$HOME/.claude/plugins/data/pl-inline}"
-CONFIG="$DATA_DIR/config.json"
-if [ -e "$CONFIG" ]; then
-  # 사용자의 실제 설정을 절대 덮어쓰지 않는다.
-  echo "설정이 이미 있어 그대로 둔다: $CONFIG" >&2
-else
-  mkdir -p "$DATA_DIR"
-  printf '{"backend":"obsidian","obsidian":{"root":"%s"}}\n' "$ROOT/vault" > "$CONFIG"
-  echo "메모리 설정 심음: $CONFIG -> $ROOT/vault" >&2
-fi
 
 echo "fixtures: $ROOT"
