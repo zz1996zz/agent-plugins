@@ -20,7 +20,7 @@ Treat explicit invocation (`/pl:pl` or `$pl`) as explicit permission to use the 
 
 ## Hard rules (binding even when the orchestrator skill is not loaded)
 
-- For non-trivial feature work, do not begin implementation until the orchestrator has sized the work and spawned the required role sessions from the `team-pl-*` definitions through its host mapping; never substitute ordinary standalone helpers.
+- For non-trivial feature work, do not begin implementation until the orchestrator has sized the work and spawned the required role sessions from the `team-pl-*` definitions through its host mapping; never substitute ordinary standalone helpers. A request that adds a new file or a test, or that contains the word `full`, is never a solo pass.
 - Do not commit, push, merge, deploy, publish, or mutate external systems unless the user explicitly requested that action.
 - For non-trivial feature work, record the feature note in the repository history and close it with `pl_history.py close` before reporting. A solo pass on a routine change writes no note. Never report `done` without fresh verification evidence.
 

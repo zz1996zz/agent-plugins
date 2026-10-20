@@ -182,6 +182,9 @@ class SkillTests(unittest.TestCase):
         for marker in ("pl_history.py", "where --json", "verify --feature", "close --feature", "## Platform Behavior", "## Workflow", ".agents/pl.md"):
             self.assertIn(marker, text, marker)
         self.assertIn("never pass a `name`", text)
+        # sizing lives inline in the workflow: a lead that skips the references must still size correctly
+        for marker in ("`solo` only when ALL hold", "never `solo`", "`full` otherwise", "The user's words override"):
+            self.assertIn(marker, text, marker)
 
     def test_runtime_prompts_have_no_removed_references(self) -> None:
         runtime = [PL_SKILL, ORCHESTRATOR, *REFERENCES.glob("*.md"), *AGENTS_DIR.glob("team-pl-*.md")]

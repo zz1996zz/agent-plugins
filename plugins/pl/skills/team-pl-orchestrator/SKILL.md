@@ -105,7 +105,12 @@ Common rules:
 ## Workflow
 
 1. **Intake.** Read the repo config. Ask at most one blocking question, only when implementation would otherwise be unsafe or impossible.
-2. **Size.** Choose `solo`, `light`, or `full` per `references/roles.md` (the user's words override). `solo`: implement, verify fresh, report. Otherwise run `pl_history.py where --json`, then `pl_history.py feature "<title>" --request "<request>"`, and write Request, Scope (with `Size:` and the reason), and planned roles.
+2. **Size.** Pick exactly one size and state it with its reason before any other action:
+   - `solo` only when ALL hold: exactly one existing file changes, no new file, no test added or modified, no user-visible behavior or output-shape change. Adding a function plus a test file is never `solo`.
+   - `light` when at most three files change, no new public API, schema, or external integration, and user-visible changes are only what the request names: the lead analyzes and implements (or delegates to one engineer), then `team-pl-code-reviewer` reviews once.
+   - `full` otherwise: discovery roles → implementation roles → review roles.
+   - The user's words override the rule: a request containing `full` or "team discussion" is `full`; `light` is `light`; `solo` is `solo`. When unsure between `light` and `full`, choose `full`.
+   `solo`: implement, verify fresh, report — no history. Otherwise run `pl_history.py where --json`, then `pl_history.py feature "<title>" --request "<request>"`, and write Request, Scope (with `Size:` and the reason), and planned roles before touching code.
 3. **Discover** (`full`). Round 0 ledger rows, spawn the discovery roles in one message, record each memo under Roles and Opinions, write Synthesis.
 4. **User decisions** (`full`). Batch every user-facing decision into one message (`references/debate-protocol.md`, User decisions). Technical decisions are the lead's.
 5. **Challenge** (`full`). Round 2 by resume, or record `skipped — no material conflict in synthesis`.
