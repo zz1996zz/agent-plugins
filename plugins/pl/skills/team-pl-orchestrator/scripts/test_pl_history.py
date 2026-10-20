@@ -152,6 +152,92 @@ class WhereTests(TempDirCase):
         self.assertIn("historyDir", proc.stderr)
 
 
+class NoteTests(TempDirCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = make_repo(self.base)
+        self.resolved = self.resolve(self.repo)
+        ph.ensure_layout(self.resolved.root)
+        self.root = self.resolved.root
+
+    def test_feature_creates_note_and_runtime_ledger(self) -> None:
+        path = ph.create_feature(self.root, "Add partial cancel", request="partial cancel", repo_name="shop", date="2026-10-20")
+        self.assertEqual(path, self.root / "features" / "2026-10-20-add-partial-cancel.md")
+        text = path.read_text(encoding="utf-8")
+        fm = ph.parse_frontmatter(text)
+        self.assertEqual(fm["status"], "in-progress")
+        self.assertEqual(fm["title"], "Add partial cancel")
+        self.assertEqual(fm["repo"], "shop")
+        self.assertEqual(fm["decisions"], [])
+        headings = [l for l in text.splitlines() if l.startswith("## ")]
+        self.assertEqual(headings, [
+            "## Request", "## Scope", "## Roles and Opinions", "## Synthesis", "## Challenges",
+            "## PL Decisions", "## Implementation Summary", "## Changed Files", "## Verification",
+            "## Review", "## Completion", "## Open Questions",
+        ])
+        self.assertIn("partial cancel", text)
+        ledger = self.root / ".runtime" / "2026-10-20-add-partial-cancel" / "ledger.md"
+        self.assertTrue(ledger.is_file())
+        self.assertIn("## Execution Ledger", ledger.read_text(encoding="utf-8"))
+        self.assertIn("## Wave Baselines", ledger.read_text(encoding="utf-8"))
+
+    def test_feature_same_title_same_day_is_idempotent(self) -> None:
+        first = ph.create_feature(self.root, "Same", request="r1", repo_name="x", date="2026-10-20")
+        before = first.read_text(encoding="utf-8")
+        second = ph.create_feature(self.root, "Same", request="r2", repo_name="x", date="2026-10-20")
+        self.assertEqual(first, second)
+        self.assertEqual(first.read_text(encoding="utf-8"), before)
+
+    def test_feature_slug_collision_different_title_fails(self) -> None:
+        ph.create_feature(self.root, "Add X!", request="", repo_name="x", date="2026-10-20")
+        with self.assertRaises(ph.HistoryError):
+            ph.create_feature(self.root, "Add X?", request="", repo_name="x", date="2026-10-20")
+
+    def test_decision_links_both_ways(self) -> None:
+        feature = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
+        decision = ph.create_decision(self.root, "Use queue", feature=feature, supersedes=None, date="2026-10-20")
+        self.assertEqual(decision, self.root / "decisions" / "2026-10-20-use-queue.md")
+        dfm = ph.parse_frontmatter(decision.read_text(encoding="utf-8"))
+        self.assertEqual(dfm["status"], "accepted")
+        self.assertEqual(dfm["feature"], "features/2026-10-20-feat.md")
+        ffm = ph.parse_frontmatter(feature.read_text(encoding="utf-8"))
+        self.assertEqual(ffm["decisions"], ["decisions/2026-10-20-use-queue.md"])
+
+    def test_decision_supersedes_marks_old(self) -> None:
+        feature = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
+        old = ph.create_decision(self.root, "Old", feature=feature, supersedes=None, date="2026-10-19")
+        new = ph.create_decision(self.root, "New", feature=feature, supersedes=old, date="2026-10-20")
+        ofm = ph.parse_frontmatter(old.read_text(encoding="utf-8"))
+        self.assertEqual(ofm["status"], "superseded")
+        self.assertEqual(ofm["superseded_by"], "decisions/2026-10-20-new.md")
+        nfm = ph.parse_frontmatter(new.read_text(encoding="utf-8"))
+        self.assertEqual(nfm["supersedes"], "decisions/2026-10-19-old.md")
+
+    def test_list_reads_frontmatter_only(self) -> None:
+        f = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
+        ph.create_decision(self.root, "Dec", feature=f, supersedes=None, date="2026-10-20")
+        rows = ph.list_notes(self.root, kind=None, status=None)
+        self.assertEqual([(r["type"], r["title"]) for r in rows], [("Feature", "Feat"), ("Decision", "Dec")])
+        self.assertEqual(ph.list_notes(self.root, kind="decision", status="accepted")[0]["title"], "Dec")
+        self.assertEqual(ph.list_notes(self.root, kind="feature", status="done"), [])
+        self.assertEqual([p.name for p in self.root.rglob("INDEX.md")], [])
+
+    def test_feature_stem_accepts_stem_name_or_path(self) -> None:
+        f = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
+        for ref in ("2026-10-20-feat", "2026-10-20-feat.md", str(f), "features/2026-10-20-feat.md"):
+            self.assertEqual(ph.feature_stem(self.root, ref), "2026-10-20-feat", ref)
+        with self.assertRaises(ph.HistoryError):
+            ph.feature_stem(self.root, "nope")
+
+    def test_feature_cli_prints_path(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "feature", "CLI feat", "--request", "r", "--date", "2026-10-20"],
+            cwd=self.repo, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(Path(proc.stdout.strip()), self.root / "features" / "2026-10-20-cli-feat.md")
+
+
 class FrontmatterTests(unittest.TestCase):
     def test_parse_frontmatter_simple_lists_and_scalars(self) -> None:
         text = "---\nhistoryDir: docs/pl\nverifyCommands:\n  - ./gradlew test\n  - npm test\nquoted: \"a: b\"\n---\nbody\n"

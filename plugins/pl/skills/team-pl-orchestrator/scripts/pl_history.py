@@ -136,8 +136,18 @@ def parse_frontmatter_simple(text: str) -> tuple[dict[str, str | list[str]], lis
         if value == "":
             data[key] = []
             current = key
-        elif value.startswith("[") or value.startswith("{"):
-            warnings.append(f"flow-style value for {key!r} ignored; use a `- item` list")
+        elif value.startswith("["):
+            # Inline JSON arrays are valid YAML; the helper writes `decisions: [...]` this way.
+            try:
+                parsed = json.loads(value)
+                if not isinstance(parsed, list) or not all(isinstance(v, str) for v in parsed):
+                    raise ValueError
+                data[key] = parsed
+            except ValueError:
+                warnings.append(f"flow-style value for {key!r} ignored; use a `- item` list or a JSON string array")
+            current = None
+        elif value.startswith("{"):
+            warnings.append(f"nested value for {key!r} ignored")
             current = None
         else:
             data[key] = _unquote(value)
@@ -399,6 +409,316 @@ def ensure_layout(root: Path) -> bool:
     return created
 
 
+# ---------------------------------------------------------------- notes
+
+FEATURE_TEMPLATE = """---
+type: Feature
+title: {title}
+status: in-progress
+date: {date}
+owner: PL agent
+repo: {repo}
+decisions: []
+---
+
+# Feature: {plain_title}
+
+## Request
+
+{request}
+
+## Scope
+
+In:
+- 
+
+Out:
+- 
+
+Size: <solo | light | full> — <why>
+
+## Roles and Opinions
+
+<!-- one subsection per role session that delivered a memo:
+### <role> (<label>)
+- Position:
+- Key evidence:
+- Recommendation:
+- Open questions:
+-->
+
+## Synthesis
+
+- Agreements:
+- Conflicts:
+- Hidden assumptions:
+- Unverifiable statically:
+
+## Challenges
+
+<!-- challenger -> recipient: claim, response, effect on decision | `skipped — no material conflict in synthesis` -->
+
+## PL Decisions
+
+- 
+
+## Implementation Summary
+
+- 
+
+## Changed Files
+
+- 
+
+## Verification
+
+| Command | Exit | Ran at | Note |
+|---|---|---|---|
+
+Fresh at close: (not closed)
+
+## Review
+
+<!-- cycle N: Gate 1 PASS|FAIL, Gate 2 PASS|FAIL, unresolved findings -->
+
+## Completion
+
+- Team:
+- Residual risk:
+
+## Open Questions
+
+- 
+"""
+
+LEDGER_TEMPLATE = """# Ledger: {stem}
+
+Runtime state for the lead. Not committed.
+
+## Execution Ledger
+
+| Task | Owner | Depends on | Deliverable | Status | Evidence |
+|---|---|---|---|---|---|
+
+## Team Lifecycle
+
+- Spawned:
+- Replaced:
+- Partial:
+- Failed:
+- Not spawned:
+
+## Wave Baselines
+
+"""
+
+DECISION_TEMPLATE = """---
+type: Decision
+title: {title}
+status: accepted
+date: {date}
+owner: PL agent
+feature: {feature}
+supersedes: {supersedes}
+superseded_by: 
+---
+
+# Decision: {plain_title}
+
+## Context
+
+<why this decision was needed>
+
+## Options Considered
+
+1. 
+2. 
+
+## Decision
+
+<selected option>
+
+## Rationale
+
+<evidence and reasoning summary>
+
+## Consequences
+
+Positive:
+- 
+
+Negative:
+- 
+
+## Validation
+
+- 
+
+## Open Questions
+
+- 
+"""
+
+
+def note_title(path: Path) -> str:
+    fm = parse_frontmatter(path.read_text(encoding="utf-8")) or {}
+    title = fm.get("title")
+    return str(title) if title else path.stem
+
+
+def runtime_dir(root: Path, stem: str) -> Path:
+    return root / ".runtime" / stem
+
+
+def feature_stem(root: Path, ref: str) -> str:
+    """Accept a stem, a file name, a history-relative path, or an absolute path."""
+    name = Path(ref).name
+    stem = name[:-3] if name.endswith(".md") else name
+    if not (root / "features" / f"{stem}.md").is_file():
+        raise HistoryError(f"feature note not found: {ref!r} (looked for features/{stem}.md)")
+    return stem
+
+
+def _note_path(root: Path, kind: str, date: str, title: str) -> Path:
+    path = root / kind / f"{date}-{slugify(title)}.md"
+    if path.exists() and note_title(path) != title:
+        raise HistoryError(f"slug collision: {title!r} resolves to existing note {path.name!r}")
+    return path
+
+
+def create_feature(root: Path, title: str, *, request: str, repo_name: str, date: str | None) -> Path:
+    title = single_line(title, "title")
+    date = today(date)
+    path = _note_path(root, "features", date, title)
+    if not path.exists():
+        atomic_write(
+            path,
+            FEATURE_TEMPLATE.format(
+                title=yaml_quote(title), plain_title=title, date=date,
+                repo=yaml_quote(repo_name or ""), request=(request or "").strip(),
+            ),
+        )
+    ledger = runtime_dir(root, path.stem) / "ledger.md"
+    if not ledger.exists():
+        atomic_write(ledger, LEDGER_TEMPLATE.format(stem=path.stem))
+    return path
+
+
+def _set_frontmatter_field(text: str, key: str, value: str | list[str]) -> str:
+    """Replace (or append) one frontmatter field. Lists are written inline as JSON (valid YAML)."""
+    match = FRONTMATTER_PATTERN.match(text)
+    if match is None:
+        raise HistoryError("note has no frontmatter")
+    rendered = json.dumps(value, ensure_ascii=False) if isinstance(value, list) else value
+    block = match.group(1)
+    pattern = re.compile(rf"(?m)^{re.escape(key)}:.*$")
+    if pattern.search(block):
+        block = pattern.sub(lambda _: f"{key}: {rendered}", block, count=1)
+    else:
+        block = block + f"{key}: {rendered}\n"
+    return text[: match.start(1)] + block + text[match.end(1):]
+
+
+def _frontmatter_list(text: str, key: str) -> list[str]:
+    fm = parse_frontmatter(text) or {}
+    value = fm.get(key)
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value.startswith("["):
+        try:
+            return [str(v) for v in json.loads(value)]
+        except ValueError:
+            return []
+    return []
+
+
+def create_decision(root: Path, title: str, *, feature: Path, supersedes: Path | None, date: str | None) -> Path:
+    title = single_line(title, "title")
+    date = today(date)
+    stem = feature_stem(root, str(feature))
+    feature_path = root / "features" / f"{stem}.md"
+    path = _note_path(root, "decisions", date, title)
+    supersedes_rel = f"decisions/{supersedes.name}" if supersedes else ""
+    if supersedes and not (root / "decisions" / supersedes.name).is_file():
+        raise HistoryError(f"supersedes target not found: {supersedes}")
+    if not path.exists():
+        atomic_write(
+            path,
+            DECISION_TEMPLATE.format(
+                title=yaml_quote(title), plain_title=title, date=date,
+                feature=f"features/{stem}.md", supersedes=supersedes_rel,
+            ),
+        )
+    rel = f"decisions/{path.name}"
+    text = feature_path.read_text(encoding="utf-8")
+    links = _frontmatter_list(text, "decisions")
+    if rel not in links:
+        atomic_write(feature_path, _set_frontmatter_field(text, "decisions", links + [rel]))
+    if supersedes:
+        old_path = root / "decisions" / supersedes.name
+        old = old_path.read_text(encoding="utf-8")
+        old = _set_frontmatter_field(old, "status", "superseded")
+        old = _set_frontmatter_field(old, "superseded_by", rel)
+        atomic_write(old_path, old)
+    return path
+
+
+def list_notes(root: Path, *, kind: str | None, status: str | None) -> list[dict]:
+    rows: list[dict] = []
+    kinds = {"feature": "features", "decision": "decisions"}
+    for key, folder in kinds.items():
+        if kind and kind != key:
+            continue
+        for path in sorted((root / folder).glob("*.md")):
+            fm = parse_frontmatter(path.read_text(encoding="utf-8")) or {}
+            row = {
+                "type": str(fm.get("type", key.capitalize())),
+                "date": str(fm.get("date", "")),
+                "status": str(fm.get("status", "")),
+                "title": str(fm.get("title", path.stem)),
+                "path": f"{folder}/{path.name}",
+            }
+            if status and row["status"] != status:
+                continue
+            rows.append(row)
+    return rows
+
+
+def cmd_feature(args: argparse.Namespace) -> int:
+    resolved = _resolved_from_args(args)
+    ensure_layout(resolved.root)
+    repo_name = args.repo or (_canonical_repo_name(resolved.repo_top) if resolved.repo_top else "")
+    print(create_feature(resolved.root, args.title, request=args.request or "", repo_name=repo_name, date=args.date))
+    return 0
+
+
+def _canonical_repo_name(repo_top: Path) -> str:
+    proc = subprocess.run(["git", "-C", str(repo_top), "remote", "get-url", "origin"], capture_output=True, text=True)
+    if proc.returncode == 0 and proc.stdout.strip():
+        name = proc.stdout.strip().rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+        return name[:-4] if name.endswith(".git") else name
+    return repo_top.name
+
+
+def cmd_decision(args: argparse.Namespace) -> int:
+    resolved = _resolved_from_args(args)
+    supersedes = Path(args.supersedes) if args.supersedes else None
+    print(create_decision(resolved.root, args.title, feature=Path(args.feature), supersedes=supersedes, date=args.date))
+    return 0
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    resolved = _resolved_from_args(args)
+    rows = list_notes(resolved.root, kind=args.type, status=args.status)
+    if not rows:
+        print("(no notes)")
+        return 0
+    width = max(len(r["title"]) for r in rows)
+    for r in rows:
+        print(f"{r['type']:<8} {r['date']:<10} {r['status']:<15} {r['title']:<{width}}  {r['path']}")
+    return 0
+
+
 # ---------------------------------------------------------------- CLI
 
 
@@ -430,6 +750,28 @@ def build_parser() -> argparse.ArgumentParser:
     where.add_argument("--work", help="work namespace for local mode")
     where.add_argument("--json", action="store_true")
     where.set_defaults(func=cmd_where)
+
+    feature = sub.add_parser("feature", help="create a feature note and its runtime ledger")
+    feature.add_argument("title")
+    feature.add_argument("--request", default="")
+    feature.add_argument("--repo", help="repository name for the frontmatter (default: origin basename)")
+    feature.add_argument("--date")
+    feature.add_argument("--work")
+    feature.set_defaults(func=cmd_feature)
+
+    decision = sub.add_parser("decision", help="create a decision note linked to a feature")
+    decision.add_argument("title")
+    decision.add_argument("--feature", required=True, help="feature stem, file name, or path")
+    decision.add_argument("--supersedes", help="decision file name or path being superseded")
+    decision.add_argument("--date")
+    decision.add_argument("--work")
+    decision.set_defaults(func=cmd_decision)
+
+    lst = sub.add_parser("list", help="list notes from frontmatter (no index file)")
+    lst.add_argument("--type", choices=("feature", "decision"))
+    lst.add_argument("--status")
+    lst.add_argument("--work")
+    lst.set_defaults(func=cmd_list)
     return parser
 
 
