@@ -183,7 +183,7 @@ class SkillTests(unittest.TestCase):
             self.assertIn(marker, text, marker)
         self.assertIn("never pass a `name`", text)
         # sizing lives inline in the workflow: a lead that skips the references must still size correctly
-        for marker in ("`solo` only when ALL hold", "never `solo`", "`full` otherwise", "The user's words override",
+        for marker in ("`solo` only when ALL hold", "never `solo`", "`full` otherwise", "First look for a size word",
                        "`full` never goes straight to implementation", "ledger baseline"):
             self.assertIn(marker, text, marker)
 

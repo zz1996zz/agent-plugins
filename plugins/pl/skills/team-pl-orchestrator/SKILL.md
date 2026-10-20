@@ -96,10 +96,10 @@ Common rules:
 
 1. **Intake.** Read the repo config. Ask at most one blocking question, only when implementation would otherwise be unsafe or impossible.
 2. **Size.** Pick exactly one size and state it with its reason before any other action:
-   - `solo` only when ALL hold: exactly one existing file changes, no new file, no test added or modified, no user-visible behavior or output-shape change. Adding a function plus a test file is never `solo`.
-   - `light` when at most three files change, no new public API, schema, or external integration, and user-visible changes are only what the request names: the lead analyzes and implements (or delegates to one engineer), then `team-pl-code-reviewer` reviews once.
-   - `full` otherwise: discovery roles → implementation roles → review roles.
-   - The user's words override the rule: a request containing `full` or "team discussion" is `full`; `light` is `light`; `solo` is `solo`. When unsure between `light` and `full`, choose `full`.
+   - **First look for a size word.** If the request contains `full`, `light`, or `solo` (typically as its first word — it is an instruction to you, not part of the feature), that word *is* the size; do not apply the table below. "team discussion" also means `full`.
+   - Otherwise `solo` only when ALL hold: exactly one existing file changes, no new file, no test added or modified, no user-visible behavior or output-shape change. Adding a function plus a test file is never `solo`.
+   - Otherwise `light` when at most three files change, no new public API, schema, or external integration, and user-visible changes are only what the request names: the lead analyzes and implements (or delegates to one engineer), then `team-pl-code-reviewer` reviews once. Record the reviewer spawn with `ledger lifecycle Spawned` even in `light`.
+   - `full` otherwise: discovery roles → implementation roles → review roles. When unsure between `light` and `full`, choose `full`.
    `solo`: implement, verify fresh, report — no history. Otherwise run `pl_history.py where --json`, then `pl_history.py feature "<title>" --request "<request>"`, and write Request, Scope (with `Size:` and the reason), and planned roles before touching code.
 3. **Discover** (`full`). Round 0 ledger rows (`pl_history.py ledger row`), then spawn the discovery roles in one message — `pl-architect` and `pl-qa` always, plus `pl-product` unless the request already states acceptance criteria and scope without ambiguity; `full` never goes straight to implementation. Record each spawn with `ledger lifecycle Spawned`, each memo under Roles and Opinions, then write Synthesis.
 4. **User decisions** (`full`). Batch every user-facing decision into one message (`references/debate-protocol.md`, User decisions). Technical decisions are the lead's.
