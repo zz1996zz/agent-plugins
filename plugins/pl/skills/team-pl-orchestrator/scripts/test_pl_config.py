@@ -158,7 +158,7 @@ class ReferenceTests(unittest.TestCase):
 
     def test_history_md_documents_every_helper_command(self) -> None:
         text = (REFERENCES / "history.md").read_text(encoding="utf-8")
-        for command in ("where", "feature", "decision", "list", "verify", "close", "check"):
+        for command in ("where", "feature", "decision", "list", "current", "ledger", "diff", "verify", "close", "check"):
             self.assertRegex(text, rf"`{command}\b", command)
         self.assertIn("docs/pl", text)
         self.assertIn(".runtime/", text)
@@ -183,7 +183,8 @@ class SkillTests(unittest.TestCase):
             self.assertIn(marker, text, marker)
         self.assertIn("never pass a `name`", text)
         # sizing lives inline in the workflow: a lead that skips the references must still size correctly
-        for marker in ("`solo` only when ALL hold", "never `solo`", "`full` otherwise", "The user's words override"):
+        for marker in ("`solo` only when ALL hold", "never `solo`", "`full` otherwise", "First look for a size word",
+                       "`full` never goes straight to implementation", "ledger baseline"):
             self.assertIn(marker, text, marker)
 
     def test_runtime_prompts_have_no_removed_references(self) -> None:

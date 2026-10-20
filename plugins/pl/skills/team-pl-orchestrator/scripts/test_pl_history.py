@@ -85,6 +85,21 @@ class WhereTests(TempDirCase):
         with self.assertRaises(ph.HistoryError):
             self.resolve(repo)
 
+    def test_where_warns_on_legacy_backend_config(self) -> None:
+        cwd = self.base / "plain"
+        cwd.mkdir()
+        config = self.base / "config.json"
+        config.write_text(json.dumps({"backend": "obsidian", "obsidian": {"root": "/x"}}), encoding="utf-8")
+        resolved = self.resolve(cwd, config_path=config, work="w")
+        self.assertTrue(any("0.4" in w and "backend" in w for w in resolved.warnings), resolved.warnings)
+
+    def test_where_warns_on_unknown_keys_in_config_files(self) -> None:
+        repo = make_repo(self.base)
+        (repo / ".agents").mkdir()
+        (repo / ".agents" / "pl.md").write_text("---\nhistoryDir: docs/pl\nmemoryBackend: notion\n---\n", encoding="utf-8")
+        resolved = self.resolve(repo)
+        self.assertTrue(any("memoryBackend" in w and "unknown" in w for w in resolved.warnings), resolved.warnings)
+
     def test_where_ignores_local_history_dir_with_warning(self) -> None:
         repo = make_repo(self.base)
         (repo / ".agents").mkdir()
@@ -234,6 +249,61 @@ class NoteTests(TempDirCase):
         self.assertEqual(ph.list_notes(self.root, kind="feature", status="done"), [])
         self.assertEqual([p.name for p in self.root.rglob("INDEX.md")], [])
 
+    def test_feature_sets_current_pointer_and_close_clears_it(self) -> None:
+        path = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
+        self.assertEqual(ph.current_stem(self.root), path.stem)
+        other = ph.create_feature(self.root, "Other", request="", repo_name="x", date="2026-10-20")
+        self.assertEqual(ph.current_stem(self.root), other.stem)
+        ph.set_current(self.root, path.stem)
+        self.assertEqual(ph.current_stem(self.root), path.stem)
+        with self.assertRaises(ph.HistoryError):
+            ph.set_current(self.root, "nope")
+
+    def test_ledger_rows_upsert_and_lifecycle(self) -> None:
+        path = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
+        ph.ledger_row(self.root, path.stem, task="T1", owner="pl-architect", depends="", deliverable="design memo", status="pending", evidence="")
+        ph.ledger_row(self.root, path.stem, task="T2", owner="lead", depends="T1", deliverable="implement", status="pending", evidence="")
+        ph.ledger_row(self.root, path.stem, task="T1", status="done", evidence="memo a1b2")
+        text = (ph.runtime_dir(self.root, path.stem) / "ledger.md").read_text(encoding="utf-8")
+        self.assertIn("| T1 | pl-architect |  | design memo | done | memo a1b2 |", text)
+        self.assertIn("| T2 | lead | T1 | implement | pending |  |", text)
+        self.assertEqual(sum(1 for l in text.splitlines() if l.startswith("| T1 |")), 1)
+        ph.ledger_lifecycle(self.root, path.stem, field="Spawned", value="pl-architect (a1b2)")
+        ph.ledger_lifecycle(self.root, path.stem, field="Spawned", value="pl-qa (c3d4)")
+        ph.ledger_lifecycle(self.root, path.stem, field="Failed", value="pl-qa (maxTurns)")
+        text = (ph.runtime_dir(self.root, path.stem) / "ledger.md").read_text(encoding="utf-8")
+        self.assertIn("- Spawned: pl-architect (a1b2); pl-qa (c3d4)", text)
+        self.assertIn("- Failed: pl-qa (maxTurns)", text)
+        with self.assertRaises(ph.HistoryError):
+            ph.ledger_lifecycle(self.root, path.stem, field="Bogus", value="x")
+        ph.ledger_baseline(self.root, path.stem, label="wave 1", porcelain=" M calc.py\n?? tests/")
+        text = (ph.runtime_dir(self.root, path.stem) / "ledger.md").read_text(encoding="utf-8")
+        self.assertIn("### wave 1", text)
+        self.assertIn("?? tests/", text)
+
+    def test_ledger_cli(self) -> None:
+        path = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "ledger", "--feature", path.stem, "row", "T1",
+             "--owner", "pl-qa", "--deliverable", "test plan", "--status", "pending"],
+            cwd=self.repo, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "ledger", "--feature", path.stem, "lifecycle", "Spawned", "pl-qa (id)"],
+            cwd=self.repo, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "ledger", "--feature", path.stem, "baseline", "wave 1"],
+            cwd=self.repo, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        text = (ph.runtime_dir(self.root, path.stem) / "ledger.md").read_text(encoding="utf-8")
+        self.assertIn("| T1 | pl-qa |  | test plan | pending |  |", text)
+        self.assertIn("- Spawned: pl-qa (id)", text)
+        self.assertIn("### wave 1", text)
+
     def test_feature_stem_accepts_stem_name_or_path(self) -> None:
         f = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
         for ref in ("2026-10-20-feat", "2026-10-20-feat.md", str(f), "features/2026-10-20-feat.md"):
@@ -346,6 +416,35 @@ class VerifyTests(TempDirCase):
         with ph.evidence_path(self.root, self.stem).open("a", encoding="utf-8") as h:
             h.write('{"no_command": true}\n')
         self.assertEqual(len(ph.latest_evidence(self.root, self.stem)), 1)
+
+    def test_diff_writes_patch_under_feature_runtime(self) -> None:
+        (self.repo / "README.md").write_text("changed\n", encoding="utf-8")
+        (self.repo / "new.txt").write_text("brand new\n", encoding="utf-8")
+        (self.root / "features" / "scratch.md").write_text("ignored\n", encoding="utf-8")
+        patch = ph.write_diff(self.resolved, self.stem, base=None)
+        self.assertEqual(patch, ph.runtime_dir(self.root, self.stem) / "diff.patch")
+        text = patch.read_text(encoding="utf-8")
+        self.assertIn("+changed", text)
+        self.assertIn("new.txt", text)
+        self.assertIn("+brand new", text)
+        self.assertNotIn("scratch.md", text)
+        self.assertNotIn("docs/pl", text)
+
+    def test_diff_with_base_includes_commits(self) -> None:
+        base = git(self.repo, "rev-parse", "HEAD").strip()
+        (self.repo / "README.md").write_text("committed change\n", encoding="utf-8")
+        git(self.repo, "commit", "-qam", "change")
+        patch = ph.write_diff(self.resolved, self.stem, base=base)
+        self.assertIn("+committed change", patch.read_text(encoding="utf-8"))
+
+    def test_diff_cli(self) -> None:
+        (self.repo / "README.md").write_text("cli change\n", encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "diff", "--feature", self.stem],
+            cwd=self.repo, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(Path(proc.stdout.strip()).is_file())
 
     def test_verify_cli(self) -> None:
         proc = subprocess.run(
