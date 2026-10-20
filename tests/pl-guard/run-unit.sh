@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
-# 안전 훅(plugins/pl/hooks/guard.sh) 단위 매트릭스. PreToolUse 페이로드를 직접 주입해
-# deny/allow 를 단정한다. bash 와 jq 만 있으면 되고 모델·네트워크가 필요 없다.
+# 안전 훅(plugins/pl/hooks/guard.py) 단위 매트릭스. PreToolUse 페이로드를 직접 주입해
+# deny/allow 를 단정한다. bash 와 python3 만 있으면 되고 모델·네트워크가 필요 없다.
 # 훅의 판정 로직을 손대면 커밋 전에 돌린다.
 #
 #   bash tests/pl-guard/run-unit.sh [hook-path]
 #
-# 페이로드 형식: name @@@ command @@@ expected [@@@ shape: claude(기본)|codex]
+# 케이스 형식: name @@@ command @@@ expected [@@@ shape]
+#   shape: claude(기본) | codex | array | cmdkey | role:none | role:<agent_type> | role:codex
+#   role:* 는 훅을 `--scope role` 로 호출한다(플러그인 훅 모드). 나머지는 인자 없이(스킬 훅·Codex 모드).
+#   command 안의 리터럴 `\n` 은 개행으로 바뀐다.
 #
-# a28 은 알려진 한계다: 인용문은 자리표시 토큰 `Q` 로 바뀌므로 `git checkout "."` 는 브랜치명과
-# 구별되지 않는다. `restore` 는 위치 인자 자체를 경로로 보므로 d26·d27 처럼 막힌다.
+# 판정: stdout 이 비어 있으면 ALLOW, 유효한 JSON 이고 "deny" 를 담으면 DENY. 그 외(깨진 JSON,
+# exit code != 0)는 FAIL — 훅이 조용히 죽는 것과 허용을 구별해야 하기 때문이다.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-HOOK="${1:-$HERE/../../plugins/pl/hooks/guard.sh}"
+HOOK="${1:-$HERE/../../plugins/pl/hooks/guard.py}"
 [ -f "$HOOK" ] || { echo "훅을 찾을 수 없다: $HOOK"; exit 2; }
-command -v jq >/dev/null 2>&1 || { echo "jq 가 필요하다 (macOS: brew install jq)"; exit 2; }
+command -v python3 >/dev/null 2>&1 || { echo "python3 가 필요하다"; exit 2; }
 
-# name @@@ command @@@ expected
+# name @@@ command @@@ expected [@@@ shape]
 CASES='
 d01-push-force          @@@ git push --force origin main                              @@@ DENY
 d02-push-f              @@@ git push -f origin main                                   @@@ DENY
@@ -43,7 +46,7 @@ d23-checkout-dashdash   @@@ git checkout -- README.md                           
 d24-checkout-head-path  @@@ git checkout HEAD -- README.md                            @@@ DENY
 d25-checkout-dot        @@@ git checkout .                                            @@@ DENY
 d26-restore-quoted      @@@ git restore "README.md"                                    @@@ DENY
-d27-restore-quoted-sq   @@@ git restore 'src/a.py'                                     @@@ DENY
+d27-restore-quoted-sq   @@@ git restore '\''src/a.py'\''                                @@@ DENY
 d28-restore-short-src   @@@ git restore -S -s HEAD a.py                                @@@ DENY
 d29-checkout-tree-path  @@@ git checkout HEAD README.md                                @@@ DENY
 d30-checkout-force      @@@ git checkout -f main                                       @@@ DENY
@@ -78,12 +81,66 @@ a24-switch-branch       @@@ git switch main                                     
 a25-switch-create       @@@ git switch -c new                                          @@@ ALLOW
 a26-checkout-quiet      @@@ git checkout -q main                                       @@@ ALLOW
 a27-checkout-slash-name @@@ git checkout feature/x                                     @@@ ALLOW
-a28-checkout-quoted-dot @@@ git checkout "."                                           @@@ ALLOW
+a28-checkout-quoted-dot @@@ git checkout "."                                           @@@ DENY
+a29-push-delete-msg     @@@ git commit -m "remove --delete flag docs"                   @@@ ALLOW
+a30-log-grep            @@@ git log --grep "reset --hard" --oneline                    @@@ ALLOW
+a31-diff-redirect       @@@ git diff HEAD > /tmp/d.patch                               @@@ ALLOW
+a32-worktree-add        @@@ git worktree add ../wt feature                             @@@ ALLOW
+a33-gc-plain            @@@ git gc                                                     @@@ ALLOW
+a34-rm-cached           @@@ git rm --cached a.txt                                      @@@ ALLOW
+a35-python-c-git-str    @@@ python3 -c "print('"'"'git reset --hard'"'"')"               @@@ ALLOW
 c01-codex-push-force    @@@ git push --force origin main                              @@@ DENY  @@@ codex
 c02-codex-reset-hard    @@@ git reset --hard HEAD~1                                   @@@ DENY  @@@ codex
 c03-codex-no-verify     @@@ git commit --no-verify -m msg                             @@@ DENY  @@@ codex
 c04-codex-push-plain    @@@ git push origin feature                                   @@@ ALLOW @@@ codex
 c05-codex-msg-force     @@@ git commit -m "force push 금지 문서화"                      @@@ ALLOW @@@ codex
+b01-abbrev-hard         @@@ git reset --har HEAD                                       @@@ DENY
+b02-abbrev-forc         @@@ git clean --forc                                           @@@ DENY
+b03-abbrev-no-veri      @@@ git commit --no-veri -m msg                                @@@ DENY
+b04-env-git             @@@ env git push --force origin main                           @@@ DENY
+b05-command-git         @@@ command git reset --hard                                   @@@ DENY
+b06-abs-git             @@@ /usr/bin/git push --force                                  @@@ DENY
+b07-xargs               @@@ echo x | xargs git push --force                            @@@ DENY
+b08-sh-c                @@@ sh -c "git reset --hard"                                   @@@ DENY
+b09-eval                @@@ eval "git clean -fd"                                       @@@ DENY
+b10-subshell            @@@ (git reset --hard)                                         @@@ DENY
+b11-single-amp          @@@ true & git reset --hard                                    @@@ DENY
+b12-redirect-after      @@@ git reset --hard>/dev/null                                 @@@ DENY
+b13-backslash-newline   @@@ git reset \\n--hard                                        @@@ DENY
+b14-push-plus           @@@ git push origin +main                                      @@@ DENY
+b15-push-colon          @@@ git push origin :old-branch                                @@@ DENY
+b16-push-delete         @@@ git push --delete origin old                               @@@ DENY
+b17-push-mirror         @@@ git push --mirror backup                                   @@@ DENY
+b18-update-ref-d        @@@ git update-ref -d refs/heads/x                             @@@ DENY
+b19-reflog-expire       @@@ git reflog expire --expire=now --all                       @@@ DENY
+b20-gc-prune            @@@ git gc --prune=now                                         @@@ DENY
+b21-worktree-rm-force   @@@ git worktree remove --force ../wt                          @@@ DENY
+b22-rm-rf-dotgit        @@@ rm -rf .git                                                @@@ DENY
+b23-git-rm-rf-dot       @@@ git rm -rf .                                               @@@ DENY
+b24-pathspec-from-file  @@@ git checkout --pathspec-from-file=list.txt                 @@@ DENY
+b25-stash-q-drop        @@@ git stash -q drop                                          @@@ DENY
+b26-alias-c             @@@ git -c alias.x="reset --hard" x                            @@@ DENY
+b27-config-hookspath    @@@ git config core.hooksPath /dev/null                        @@@ DENY
+b28-config-env          @@@ git --config-env=core.hooksPath=X commit -m m              @@@ DENY
+b29-git-config-params   @@@ GIT_CONFIG_PARAMETERS="'"'"'core.hooksPath=/x'"'"'" git commit -m m @@@ DENY
+b30-bash-lc             @@@ bash -lc "cd /x && git push -f"                            @@@ DENY
+b31-dollar-paren        @@@ echo $(git reset --hard)                                   @@@ DENY
+b32-time-prefix         @@@ time git clean -fd                                         @@@ DENY
+b33-push-d              @@@ git push -d origin old                                     @@@ DENY
+b34-rm-r-dotgit-slash   @@@ rm -r .git/                                                @@@ DENY
+f01-msg-semicolon       @@@ git commit -m "docs; git push --force is banned"           @@@ ALLOW
+f02-checkout-redirect   @@@ git checkout main 2>&1                                     @@@ ALLOW
+f03-heredoc-body        @@@ cat > n.md <<'\''EOF'\''\ngit reset --hard x\nEOF          @@@ ALLOW
+f04-tag-msg             @@@ git tag -a v1 -m "release; git branch -D old"              @@@ ALLOW
+f05-commit-multiline    @@@ git commit -m "line1\ngit reset --hard in body"             @@@ ALLOW
+p01-array-command       @@@ git push --force                                           @@@ DENY  @@@ array
+p02-cmd-key             @@@ git push --force                                           @@@ DENY  @@@ cmdkey
+p03-array-safe          @@@ git status                                                 @@@ ALLOW @@@ array
+r01-scope-role-no-agent @@@ git push --force                                           @@@ ALLOW @@@ role:none
+r02-scope-role-explore  @@@ git push --force                                           @@@ ALLOW @@@ role:Explore
+r03-scope-role-pl       @@@ git push --force                                           @@@ DENY  @@@ role:pl:team-pl-backend-engineer
+r04-scope-role-codex    @@@ git push --force                                           @@@ ALLOW @@@ role:codex
+r05-scope-role-pl-safe  @@@ git status                                                 @@@ ALLOW @@@ role:pl:team-pl-qa-engineer
 '
 
 OUT="$(mktemp)"
@@ -96,15 +153,40 @@ printf '%s\n' "$CASES" | while IFS= read -r line; do
   cmd="$( printf '%s' "$line" | awk -F'@@@' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
   exp="$( printf '%s' "$line" | awk -F'@@@' '{print $3}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
   shape="$(printf '%s' "$line" | awk -F'@@@' '{print $4}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-  if [ "$shape" = "codex" ]; then
-    # Codex CLI PreToolUse 페이로드 (learn.chatgpt.com/docs/hooks, 2026-09). tool_input.command 는
-    # Claude 와 같은 키다 — 추가 필드가 판정을 흔들지 않는지 고정한다.
-    payload="$(jq -n --arg c "$cmd" '{session_id:"s1",transcript_path:null,cwd:"/tmp/x",hook_event_name:"PreToolUse",permission_mode:"default",turn_id:"t1",tool_name:"Bash",tool_use_id:"u1",tool_input:{command:$c},model:"gpt-5"}')"
+  shape="${shape:-claude}"
+  args=""
+  case "$shape" in role:*) args="--scope role" ;; esac
+  payload="$(PL_CMD="$cmd" PL_SHAPE="$shape" python3 - <<'PY'
+import json, os
+cmd = os.environ["PL_CMD"].replace("\\n", "\n")
+shape = os.environ["PL_SHAPE"]
+base = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": cmd}}
+if shape == "codex" or shape == "role:codex":
+    # Codex CLI PreToolUse 페이로드 (developers.openai.com/codex/hooks). tool_input.command 는 Claude 와 같은 키.
+    base = {"session_id": "s1", "transcript_path": None, "cwd": "/tmp/x", "hook_event_name": "PreToolUse",
+            "permission_mode": "default", "turn_id": "t1", "tool_name": "Bash", "tool_use_id": "u1",
+            "tool_input": {"command": cmd}, "model": "gpt-5"}
+elif shape == "array":
+    base["tool_input"] = {"command": ["bash", "-lc", cmd]}
+elif shape == "cmdkey":
+    base["tool_input"] = {"cmd": cmd}
+elif shape.startswith("role:") and shape not in ("role:none", "role:codex"):
+    base["agent_id"] = "a1"
+    base["agent_type"] = shape[len("role:"):]
+print(json.dumps(base, ensure_ascii=False))
+PY
+)"
+  # shellcheck disable=SC2086
+  out="$(printf '%s' "$payload" | python3 "$HOOK" $args 2>/dev/null)"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    act="EXIT$rc"
+  elif [ -z "$out" ]; then
+    act=ALLOW
+  elif printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("hookSpecificOutput",{}).get("permissionDecision")=="deny" else 3)' 2>/dev/null; then
+    act=DENY
   else
-    payload="$(jq -n --arg c "$cmd" '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c}}')"
+    act=BADJSON
   fi
-  out="$(printf '%s' "$payload" | bash "$HOOK" 2>&1)"
-  case "$out" in *'"deny"'*) act=DENY ;; *) act=ALLOW ;; esac
   [ "$act" = "$exp" ] && res=PASS || res=FAIL
   printf '%-24s %-8s %-8s %s\n' "$name" "$exp" "$act" "$res"
 done | tee "$OUT"
