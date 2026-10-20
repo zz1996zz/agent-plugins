@@ -456,6 +456,27 @@ class CheckCloseTests(TempDirCase):
         self.assertIn("no verification evidence", proc.stdout + proc.stderr)
 
 
+class ParallelBranchTests(TempDirCase):
+    def test_parallel_branches_merge_without_conflict(self) -> None:
+        repo = make_repo(self.base)
+        resolved = self.resolve(repo)
+        ph.ensure_layout(resolved.root)
+        git(repo, "add", "docs")
+        git(repo, "commit", "-qm", "history layout")
+        for branch, title in (("a", "Feature A"), ("b", "Feature B")):
+            git(repo, "checkout", "-qb", branch, "main")
+            ph.create_feature(resolved.root, title, request="", repo_name="x", date="2026-10-20")
+            git(repo, "add", "docs")
+            git(repo, "commit", "-qm", title)
+        git(repo, "checkout", "-q", "a")
+        git(repo, "merge", "-q", "--no-edit", "b")
+        self.assertTrue((resolved.root / "features" / "2026-10-20-feature-a.md").is_file())
+        self.assertTrue((resolved.root / "features" / "2026-10-20-feature-b.md").is_file())
+        self.assertEqual(git(repo, "status", "--porcelain").strip(), "")
+        # .runtime is never committed
+        self.assertEqual(git(repo, "ls-files", "docs/pl/.runtime").strip(), "")
+
+
 class FrontmatterTests(unittest.TestCase):
     def test_parse_frontmatter_simple_lists_and_scalars(self) -> None:
         text = "---\nhistoryDir: docs/pl\nverifyCommands:\n  - ./gradlew test\n  - npm test\nquoted: \"a: b\"\n---\nbody\n"
