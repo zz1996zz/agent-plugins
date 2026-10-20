@@ -73,6 +73,18 @@ class WhereTests(TempDirCase):
                 self.resolve(repo)
         self.assertFalse((repo / "docs").exists())
 
+    def test_where_rejects_dot_git_case_insensitively_and_symlink_escape(self) -> None:
+        repo = make_repo(self.base)
+        (repo / ".agents").mkdir()
+        (repo / ".agents" / "pl.md").write_text("---\nhistoryDir: .GIT/x\n---\n", encoding="utf-8")
+        with self.assertRaises(ph.HistoryError):
+            self.resolve(repo)
+        outside = self.base / "outside"; outside.mkdir()
+        (repo / "link").symlink_to(outside)
+        (repo / ".agents" / "pl.md").write_text("---\nhistoryDir: link/pl\n---\n", encoding="utf-8")
+        with self.assertRaises(ph.HistoryError):
+            self.resolve(repo)
+
     def test_where_ignores_local_history_dir_with_warning(self) -> None:
         repo = make_repo(self.base)
         (repo / ".agents").mkdir()
@@ -304,6 +316,37 @@ class VerifyTests(TempDirCase):
     def test_fingerprint_none_in_local_mode(self) -> None:
         self.assertIsNone(ph.fingerprint(None, self.root))
 
+    def test_verify_single_string_runs_in_shell_and_matches_verify_commands(self) -> None:
+        (self.repo / ".agents").mkdir()
+        (self.repo / ".agents" / "pl.md").write_text("---\nverifyCommands:\n  - cd . && python3 -c \"print(1)\"\n---\n", encoding="utf-8")
+        git(self.repo, "add", ".agents"); git(self.repo, "commit", "-qm", "cfg")
+        resolved = self.resolve(self.repo)
+        command = resolved.verify_commands[0]
+        rc = ph.run_verify(resolved, self.stem, [command])
+        self.assertEqual(rc, 0)
+        self.assertIn(command, ph.latest_evidence(self.root, self.stem))
+        self.assertEqual(ph.latest_evidence(self.root, self.stem)[command]["exit"], 0)
+        problems, fresh = ph._evidence_problems(resolved, self.stem)
+        self.assertEqual(problems, [])
+
+    def test_verify_chain_of_runs_keeps_earlier_evidence_fresh(self) -> None:
+        a = self.py("import time; open('a.out','w').write(str(time.time_ns()))")
+        b = self.py("import time; open('b.out','w').write(str(time.time_ns()))")
+        ph.run_verify(self.resolved, self.stem, a)
+        ph.run_verify(self.resolved, self.stem, b)
+        problems, fresh = ph._evidence_problems(self.resolved, self.stem)
+        self.assertEqual(problems, [])
+        self.assertTrue(fresh)
+        (self.repo / "README.md").write_text("edit outside verify\n", encoding="utf-8")
+        problems, fresh = ph._evidence_problems(self.resolved, self.stem)
+        self.assertTrue(any("stale" in p for p in problems), problems)
+
+    def test_latest_evidence_skips_malformed_lines(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        with ph.evidence_path(self.root, self.stem).open("a", encoding="utf-8") as h:
+            h.write('{"no_command": true}\n')
+        self.assertEqual(len(ph.latest_evidence(self.root, self.stem)), 1)
+
     def test_verify_cli(self) -> None:
         proc = subprocess.run(
             [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "verify", "--feature", self.stem, "--", sys.executable, "-c", "print('ok')"],
@@ -442,6 +485,21 @@ class CheckCloseTests(TempDirCase):
         self.fill_size(f)
         self.assertEqual(ph.close_feature(resolved, f.stem, "done"), [])
         self.assertIn("Fresh at close: unknown", f.read_text(encoding="utf-8"))
+
+    def test_close_done_accepts_zero_partial_in_team_line(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        self.set_team_line("2 role sessions (complete 2, partial 0, failed 0)")
+        self.assertEqual(ph.close_feature(self.resolved, self.stem, "done"), [])
+
+    def test_close_done_refuses_nonzero_partial_in_team_line(self) -> None:
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        self.set_team_line("2 role sessions (complete 1, partial 1)")
+        problems = ph.close_feature(self.resolved, self.stem, "done")
+        self.assertTrue(any("partial" in p for p in problems), problems)
+
+    def test_close_blocked_always_closes_despite_placeholder(self) -> None:
+        self.assertEqual(ph.close_feature(self.resolved, self.stem, "blocked"), [])
+        self.assertEqual(ph.parse_frontmatter(self.feature.read_text(encoding="utf-8"))["status"], "blocked")
 
     def test_close_rejects_bad_status(self) -> None:
         with self.assertRaises(ph.HistoryError):

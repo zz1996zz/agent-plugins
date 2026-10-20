@@ -33,7 +33,12 @@ import shlex
 import sys
 
 ROLE_AGENT_PATTERN = re.compile(r"^pl:team-pl-")
-WRAPPERS = {"env", "command", "exec", "time", "nohup", "sudo", "nice", "builtin"}
+WRAPPERS = {"env", "command", "exec", "time", "nohup", "sudo", "doas", "nice", "ionice", "builtin", "stdbuf", "caffeinate"}
+# wrappers whose next token is their own argument (duration, priority, flags), not the command
+WRAPPER_ARG_OPTIONS = {"-n", "-u", "-g", "-c", "-k", "-s", "-o", "-e", "-i"}
+# shell keywords that may precede a simple command on the same segment
+KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "!", "{", "}", "fi", "done", "esac", "time"}
+XARGS_ARG_OPTIONS = {"-n", "-I", "-L", "-P", "-s", "-d", "-E", "-a"}
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
 SEPARATORS = {";", "&&", "||", "|", "&", "\n", "|&", ";;"}
 SHORT_FLAG = re.compile(r"^-[A-Za-z]+$")
@@ -87,8 +92,8 @@ def strip_heredocs(script: str) -> str:
     while i < len(lines):
         line = lines[i]
         out.append(line)
-        match = re.search(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1", line)
-        if match:
+        match = re.search(r"(?<!<)<<(?!<)-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1", line)
+        if match and not _inside_quotes(line, match.start()):
             terminator = match.group(2)
             i += 1
             while i < len(lines) and lines[i].strip() != terminator:
@@ -97,13 +102,26 @@ def strip_heredocs(script: str) -> str:
     return "\n".join(out)
 
 
+def _inside_quotes(line: str, index: int) -> bool:
+    """True when position `index` sits inside a single- or double-quoted span of `line`."""
+    quote = None
+    for i, ch in enumerate(line[:index]):
+        if quote is None and ch in "'\"":
+            quote = ch
+        elif quote == ch and (ch == "'" or line[i - 1] != "\\"):
+            quote = None
+    return quote is not None
+
+
 def is_redirection(token: str) -> bool:
-    return bool(re.fullmatch(r"\d*[<>]{1,2}&?\d*|&>|&>>|[<>]\(|>\|", token))
+    return bool(re.fullmatch(r"\d*[<>]{1,3}&?\d*|&>|&>>|[<>]\(|>\|", token))
 
 
 def tokenize(script: str) -> list[str]:
     script = script.replace("\\\n", " ")
     script = strip_heredocs(script)
+    # a newline ends a simple command; shlex would otherwise fold it into whitespace
+    script = script.replace("\n", " ; ")
     lexer = shlex.shlex(script, posix=True, punctuation_chars=";&|<>()")
     lexer.whitespace_split = True
     lexer.commenters = ""
@@ -167,10 +185,17 @@ def expand_nested(argv: list[str]) -> list[list[str]]:
         result.extend(split_commands(" ".join(head[1:])))
     elif base == "xargs":
         # the first non-option word is the command xargs runs; everything after it belongs to that command
-        for j, token in enumerate(head[1:], 1):
-            if not token.startswith("-"):
-                result.append(head[j:])
-                break
+        j = 1
+        while j < len(head):
+            token = head[j]
+            if token in XARGS_ARG_OPTIONS:
+                j += 2
+                continue
+            if token.startswith("-"):
+                j += 1
+                continue
+            result.append(head[j:])
+            break
     return result
 
 
@@ -191,11 +216,23 @@ def strip_wrappers(argv: list[str]) -> tuple[list[str], str | None]:
             i += 1
             continue
         base = os.path.basename(token.lstrip("\\"))
+        if base in KEYWORDS:
+            i += 1
+            continue
+        if base == "timeout":
+            # timeout [options] DURATION COMMAND...
+            i += 1
+            while i < len(argv) and argv[i].startswith("-"):
+                if argv[i] in ("-s", "-k", "--signal", "--kill-after") and i + 1 < len(argv):
+                    i += 1
+                i += 1
+            i += 1  # the duration
+            continue
         if base in WRAPPERS:
             i += 1
             # skip wrapper options such as `env -i`, `nice -n 5`, `sudo -u x`
             while i < len(argv) and argv[i].startswith("-"):
-                if argv[i] in ("-n", "-u", "-g") and i + 1 < len(argv):
+                if argv[i] in WRAPPER_ARG_OPTIONS and i + 1 < len(argv):
                     i += 1
                 i += 1
             continue
@@ -231,7 +268,8 @@ def judge(argv: list[str]) -> str | None:
     head = argv[0]
     if head == "rm":
         for token in argv[1:]:
-            if token.rstrip("/") == ".git" or token.endswith("/.git"):
+            stripped = token.rstrip("/")
+            if stripped == ".git" or stripped.endswith("/.git"):
                 return ".git 삭제"
         return None
     if head != "git":
@@ -417,8 +455,11 @@ def judge(argv: list[str]) -> str | None:
         if recursive and force and any(t in (".", "./", "*") for t in targets):
             return "git rm -rf .(작업트리 전체 삭제)"
     elif sub == "config":
-        joined = " ".join(rest).lower()
-        if "core.hookspath" in joined and not any(t in ("--get", "--get-all", "-l", "--list") for t in rest):
+        positional = [t for t in rest if not t.startswith("-")]
+        writes = any(t in ("--add", "--replace-all", "--unset", "--unset-all", "--edit", "-e") for t in rest)
+        key_index = next((i for i, t in enumerate(positional) if t.lower() == "core.hookspath"), None)
+        # `git config core.hooksPath` alone reads; a value after the key (or an explicit write flag) sets it
+        if key_index is not None and (writes or len(positional) > key_index + 1):
             return "훅 우회(config core.hooksPath)"
     return None
 

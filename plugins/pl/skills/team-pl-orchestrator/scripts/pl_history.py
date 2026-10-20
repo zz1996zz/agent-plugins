@@ -323,9 +323,21 @@ def validate_history_dir(value: str) -> str:
     parts = Path(normalized).parts
     if not parts or parts[0] == ".." or normalized.startswith(".."):
         raise HistoryError(f"historyDir must stay inside the repository: {value!r}")
-    if parts[0] == ".git":
+    if parts[0].lower() == ".git":
         raise HistoryError(f"historyDir must not be under .git: {value!r}")
     return normalized
+
+
+def ensure_inside(repo_top: Path, root: Path, value: str) -> None:
+    """Refuse a history root that resolves (through symlinks) outside the repository or into .git."""
+    resolved_top = repo_top.resolve()
+    target = root.resolve()
+    try:
+        rel = target.relative_to(resolved_top)
+    except ValueError as exc:
+        raise HistoryError(f"historyDir resolves outside the repository: {value!r} -> {target}") from exc
+    if rel.parts and rel.parts[0].lower() == ".git":
+        raise HistoryError(f"historyDir resolves under .git: {value!r}")
 
 
 def resolve(
@@ -343,6 +355,8 @@ def resolve(
         protected = _dedup(_as_list(team.get("protectedPaths"), "protectedPaths", warnings)
                            + _as_list(local.get("protectedPaths"), "protectedPaths", warnings))
         root = root_override or (repo_top / history_dir)
+        if root_override is None:
+            ensure_inside(repo_top, root, history_dir)
         return Resolved("repo", root.resolve(), repo_top, history_dir, verify, protected, warnings)
 
     history_root = None
@@ -725,9 +739,21 @@ TAIL_LINES = 40
 
 
 def command_string(argv: list[str]) -> str:
+    """Identity key of a verification command.
+
+    One argument = a shell string (run through `sh -c`, recorded verbatim so it
+    matches `verifyCommands` entries exactly); several = an argv (recorded with
+    shlex.join).
+    """
     import shlex
 
+    if len(argv) == 1:
+        return argv[0]
     return shlex.join(argv)
+
+
+def command_argv(argv: list[str]) -> list[str]:
+    return ["sh", "-c", argv[0]] if len(argv) == 1 else argv
 
 
 def evidence_path(root: Path, stem: str) -> Path:
@@ -790,7 +816,9 @@ def latest_evidence(root: Path, stem: str) -> dict[str, dict]:
     """Command → last record. A withdrawal record replaces the run record."""
     latest: dict[str, dict] = {}
     for record in read_evidence(root, stem):
-        latest[record["command"]] = record
+        command = record.get("command")
+        if isinstance(command, str):
+            latest[command] = record
     return latest
 
 
@@ -845,15 +873,19 @@ def run_verify(resolved: Resolved, stem: str, argv: list[str]) -> int:
     fp_before = fingerprint(resolved.repo_top, resolved.root)
     tail: list[str] = []
     try:
-        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=resolved.repo_top or Path.cwd())
+        proc = subprocess.Popen(
+            command_argv(argv), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            cwd=resolved.repo_top or Path.cwd(),
+        )
     except OSError as exc:
         raise HistoryError(f"cannot run {command!r}: {exc}") from exc
     assert proc.stdout is not None
-    for line in proc.stdout:
-        sys.stdout.write(line)
-        tail.append(line.rstrip("\n"))
-        if len(tail) > TAIL_LINES:
-            del tail[0]
+    with proc.stdout:
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            tail.append(line.rstrip("\n"))
+            if len(tail) > TAIL_LINES:
+                del tail[0]
     exit_code = proc.wait()
     record = {
         "ts_start": ts_start,
@@ -899,6 +931,12 @@ COMPLETION_SECTION_PATTERN = re.compile(r"(?ms)^## Completion\n(.*?)(?=^## |\Z)"
 VERIFICATION_SECTION_PATTERN = re.compile(r"(?ms)^## Verification\n(.*?)(?=^## |\Z)")
 TEAM_LINE_PATTERN = re.compile(r"(?m)^-[ \t]*Team:[ \t]*(.*)$")
 DONE_FORBIDDEN_TEAM_TOKENS = ("partial", "failed")
+# `partial 0` / `failed 0` are fine; `partial 1`, `failed: 2`, or a bare word count as gaps.
+_TEAM_GAP_PATTERN = re.compile(r"\b(partial|failed)\b(?!\s*:?\s*(?:0|none|no)\b)", re.I)
+
+
+def team_line_gaps(team_text: str) -> list[str]:
+    return sorted({m.group(1).lower() for m in _TEAM_GAP_PATTERN.finditer(team_text)})
 HTML_COMMENT_PATTERN = re.compile(r"(?s)<!--.*?-->")
 
 
@@ -956,10 +994,8 @@ def check(root: Path, *, stem: str | None, assume_status: str | None = None) -> 
         if kind == "Feature" and status == "done":
             completion = COMPLETION_SECTION_PATTERN.search(prose)
             team = TEAM_LINE_PATTERN.search(completion.group(1)) if completion else None
-            team_text = (team.group(1) if team else "").lower()
-            for token in DONE_FORBIDDEN_TEAM_TOKENS:
-                if token in team_text:
-                    problems.append(f"done status contradicts Team line: {note} -> {token!r}")
+            for token in team_line_gaps(team.group(1) if team else ""):
+                problems.append(f"done status contradicts Team line: {note} -> {token!r}")
             if _verification_rows(text) == 0:
                 problems.append(f"done status with no verification rows: {note}")
             stamp = re.search(r"(?m)^Fresh at close: (.+)$", text)
@@ -990,6 +1026,7 @@ def _evidence_problems(resolved: Resolved, stem: str) -> tuple[list[str], bool]:
     if not [c for c in required if c in latest and not latest[c].get("withdrawn")]:
         problems.append("no verification evidence recorded (run `pl_history.py verify --feature <stem> -- <command>`)")
     current = fingerprint(resolved.repo_top, resolved.root)
+    runs = [r for r in read_evidence(resolved.root, stem) if not r.get("withdrawn") and isinstance(r.get("command"), str)]
     for command in required:
         record = latest.get(command)
         if record is None or record.get("withdrawn"):
@@ -997,9 +1034,24 @@ def _evidence_problems(resolved: Resolved, stem: str) -> tuple[list[str], bool]:
             continue
         if record.get("exit") != 0:
             problems.append(f"required command failed (exit {record.get('exit')}): {command!r}")
-        if current is not None and record.get("fp_after") != current:
+        if current is not None and not _fresh_through_chain(runs, record, current):
             problems.append(f"evidence is stale (working tree changed after it ran): {command!r}")
     return problems, not problems
+
+
+def _fresh_through_chain(runs: list[dict], record: dict, current: str) -> bool:
+    """A run is fresh when only later verify runs changed the tree: each later run
+    started from the previous run's end state and the last one ends at `current`."""
+    try:
+        index = runs.index(record)
+    except ValueError:
+        return record.get("fp_after") == current
+    state = record.get("fp_after")
+    for later in runs[index + 1:]:
+        if later.get("fp_before") != state:
+            return False
+        state = later.get("fp_after")
+    return state == current
 
 
 def close_feature(resolved: Resolved, stem: str, status: str) -> list[str]:
@@ -1017,8 +1069,12 @@ def close_feature(resolved: Resolved, stem: str, status: str) -> list[str]:
         text = path.read_text(encoding="utf-8")
         completion = COMPLETION_SECTION_PATTERN.search(strip_code(text))
         team = TEAM_LINE_PATTERN.search(completion.group(1)) if completion else None
-        team_text = (team.group(1) if team else "").lower()
-        problems += [f"Team line contains {t!r}; close as done-with-risks instead" for t in DONE_FORBIDDEN_TEAM_TOKENS if t in team_text]
+        problems += [f"Team line contains {t!r}; close as done-with-risks instead" for t in team_line_gaps(team.group(1) if team else "")]
+    else:
+        # done-with-risks / blocked always close: placeholders and links become warnings, not refusals
+        for problem in problems:
+            print(f"warning: {problem}", file=sys.stderr)
+        problems = []
     if problems:
         return problems
     if resolved.repo_top is None:

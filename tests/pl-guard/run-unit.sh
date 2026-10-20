@@ -128,6 +128,19 @@ b31-dollar-paren        @@@ echo $(git reset --hard)                            
 b32-time-prefix         @@@ time git clean -fd                                         @@@ DENY
 b33-push-d              @@@ git push -d origin old                                     @@@ DENY
 b34-rm-r-dotgit-slash   @@@ rm -r .git/                                                @@@ DENY
+b35-for-loop            @@@ for b in a c; do git push --force origin $b; done              @@@ DENY
+b36-if-then             @@@ if true; then git reset --hard; fi                          @@@ DENY
+b37-if-cond             @@@ if git push -f origin x; then echo ok; fi                    @@@ DENY
+b38-while-do            @@@ while true; do git clean -fd; break; done                  @@@ DENY
+b39-bang                @@@ ! git push -f origin x                                      @@@ DENY
+b40-timeout-wrapper     @@@ timeout 60 git push --force origin x                        @@@ DENY
+b41-xargs-n             @@@ echo a | xargs -n 1 git branch -D                           @@@ DENY
+b42-rm-rf-dot-slash-git @@@ rm -rf ./.git/                                              @@@ DENY
+b43-herestring          @@@ cat <<< hello\ngit reset --hard                             @@@ DENY
+b44-quoted-heredoc-text @@@ echo '\''a <<EOF'\''\ngit reset --hard                            @@@ DENY
+b45-config-hookspath-set @@@ git config core.hooksPath /tmp/x                           @@@ DENY
+f06-config-hookspath-get @@@ git config core.hooksPath                                  @@@ ALLOW
+f07-config-get-flag     @@@ git config --get core.hooksPath                             @@@ ALLOW
 f01-msg-semicolon       @@@ git commit -m "docs; git push --force is banned"           @@@ ALLOW
 f02-checkout-redirect   @@@ git checkout main 2>&1                                     @@@ ALLOW
 f03-heredoc-body        @@@ cat > n.md <<'\''EOF'\''\ngit reset --hard x\nEOF          @@@ ALLOW
