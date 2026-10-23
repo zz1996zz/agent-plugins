@@ -69,7 +69,7 @@ $pl <기능 요청>           (Codex CLI)
 
 예: `/pl:pl 주문 취소 API에 부분 취소 지원 추가` · `/pl:pl light 로그 포맷에 요청 ID 추가`
 
-- 역할 세션은 리드 모델을 그대로 상속하므로 비용과 요청 한도는 리드 모델 선택(`claude --model …`, `codex -m …`)으로 통제합니다. 역할마다 `maxTurns`가 있어 폭주하지 않습니다.
+- Claude Code에서는 역할마다 모델이 정해져 있습니다. 판정 역할(architect, code-reviewer, security-reviewer, integration-reviewer)은 `opus`, 생산 역할(qa, backend, frontend, data)과 product-analyst는 `sonnet`이고, effort는 product-analyst만 `medium`, 나머지는 `high`입니다. 리드는 세션 모델 그대로입니다. Codex에서는 역할이 리드 모델(`codex -m …`)을 상속하고 effort만 적용됩니다. 역할마다 `maxTurns`가 있어 폭주하지 않습니다.
 - 분석 단계에서 나온 **제품 범위 결정은 한 번에 모아 사용자에게 묻습니다.** 기술 결정은 리드가 합니다.
 - `done`은 리드가 `pl_history.py verify`로 돌린 검증 명령이 **최종 코드 변경 뒤에** 모두 통과했을 때만 `close`가 허용합니다. 역할 세션의 "테스트 통과" 주장은 증거가 아닙니다.
 
@@ -145,7 +145,7 @@ Codex에서는 새 플러그인 훅을 처음 한 번 `/hooks`에서 신뢰해�
 | 스폰 | `Agent`(`pl:team-pl-<role>`, `name` 없음) | `spawn_agent`(`team-pl-<role>`) |
 | 재개 / 중지 | `SendMessage` / `TaskStop` | `send_input`·`resume_agent` / `close_agent` |
 | 역할 메모 저장 | 플러그인 SubagentStop 훅이 `pl:team-pl-*` 세션의 메모를 `.runtime/<feature>/memos/`에 자동 저장(다른 에이전트에는 아무 동작 없음) | 리드가 기록 |
-| 역할별 허용 도구 | 에이전트 `tools` 목록(`maxTurns`, 검사 역할 `effort: xhigh`) | TOML의 `sandbox_mode`는 **적용되지 않는다**(공식 문서; 부모 세션 샌드박스가 적용). 읽기 전용 규칙은 `developer_instructions` 산문 |
+| 역할별 허용 도구 | 에이전트 `tools` 목록(`model`, `effort`, `maxTurns`) | TOML의 `sandbox_mode`는 **적용되지 않는다**(공식 문서; 부모 세션 샌드박스가 적용). 읽기 전용 규칙은 `developer_instructions` 산문 |
 | 역할 정의 설치 | 플러그인에 번들 | `install-codex.sh`로 `~/.codex/agents/`에 복사 |
 | Agent Teams | 켜 둔 사용자도 동작합니다(이름 없는 스폰은 teammate로 바뀌지 않음). 끄기를 권장: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0` | 해당 없음 |
 | 진입점 | `disable-model-invocation`으로 `/pl:pl` 명시 호출만 | description 기반 암묵 호출 허용 |

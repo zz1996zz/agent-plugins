@@ -22,14 +22,14 @@ import build_codex_agents as bca  # noqa: E402
 AGENTS_DIR = SCRIPT_DIR.parents[2] / "agents"
 CODEX_DIR = AGENTS_DIR / "codex"
 
-# 검문소 역할(effort: xhigh 유지)과 프로덕션 역할(effort 없음, 리드 상속)의 예시 프론트매터.
-# 모델은 두 역할군 모두 `inherit` — TOML 에는 어느 쪽도 `model` 키를 남기지 않는다.
+# 검문소 역할(opus/high)과 프로덕션 역할(sonnet/high)의 예시 프론트매터. 모델 alias 는
+# Claude Code 전용이므로 TOML 에는 어느 쪽도 `model` 키를 남기지 않고 effort 만 옮긴다.
 CHECK_ROLE_SAMPLE = """---
 name: team-pl-sample-check
 description: Sample check role. Role session; spawned by the PL lead only.
 tools: Read, Grep, Glob
-model: inherit
-effort: xhigh
+model: opus
+effort: high
 ---
 
 You are the sample check role.
@@ -41,7 +41,8 @@ PRODUCTION_ROLE_SAMPLE = """---
 name: team-pl-sample-production
 description: Sample production role. Role session; spawned by the PL lead only.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: inherit
+model: sonnet
+effort: high
 ---
 
 You are the sample production role.
@@ -52,8 +53,8 @@ class BuildCodexAgentsTests(unittest.TestCase):
     def test_parse_agent_splits_frontmatter_and_body(self) -> None:
         fm, body = bca.parse_agent(CHECK_ROLE_SAMPLE)
         self.assertEqual("team-pl-sample-check", fm["name"])
-        self.assertEqual("inherit", fm["model"])
-        self.assertEqual("xhigh", fm["effort"])
+        self.assertEqual("opus", fm["model"])
+        self.assertEqual("high", fm["effort"])
         self.assertTrue(body.startswith("You are the sample check role."))
         self.assertNotIn("---", body.splitlines()[0])
 
@@ -62,25 +63,32 @@ class BuildCodexAgentsTests(unittest.TestCase):
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-check", data["name"])
-        self.assertEqual("xhigh", data["model_reasoning_effort"])
+        self.assertEqual("high", data["model_reasoning_effort"])
         self.assertEqual("read-only", data["sandbox_mode"])
         self.assertNotIn("model", data)
         self.assertIn("Second paragraph with a '''triple quote''' inside.", data["developer_instructions"])
         self.assertTrue(toml_text.startswith("# Generated from"))
 
-    def test_render_production_role_has_neither_key(self) -> None:
+    def test_render_production_role_has_effort_and_no_model_key(self) -> None:
         fm, body = bca.parse_agent(PRODUCTION_ROLE_SAMPLE)
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-production", data["name"])
         self.assertEqual("workspace-write", data["sandbox_mode"])
         self.assertNotIn("model", data)
+        self.assertEqual("high", data["model_reasoning_effort"])
+
+    def test_render_role_without_effort_omits_the_key(self) -> None:
+        fm, body = bca.parse_agent(PRODUCTION_ROLE_SAMPLE.replace("effort: high\n", ""))
+        toml_text = bca.render_toml(fm, body)
+        data = tomllib.loads(toml_text)
+        self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
     def test_render_edit_tools_give_advisory_workspace_write(self) -> None:
         fm, body = bca.parse_agent(
             CHECK_ROLE_SAMPLE.replace("tools: Read, Grep, Glob", "tools: Read, Write, Edit, Bash").replace(
-                "effort: xhigh\n", ""
+                "effort: high\n", ""
             )
         )
         toml_text = bca.render_toml(fm, body)
@@ -186,38 +194,25 @@ class BuildCodexAgentsTests(unittest.TestCase):
             fm, body = bca.parse_agent(path.read_text(encoding="utf-8"))
             tools = {t.strip() for t in fm["tools"].split(",")}
             self.assertFalse(tools & team_tools, path.name)
-            self.assertEqual("inherit", fm["model"], path.name)
+            self.assertIn(fm["model"], {"opus", "sonnet"}, path.name)
+            self.assertIn(fm["effort"], {"medium", "high"}, path.name)
             self.assertTrue(fm.get("maxTurns", "").isdigit() and int(fm["maxTurns"]) > 0, path.name)
             self.assertIn("Your lane:", body, path.name)
             self.assertIn("Status: DONE | NEEDS_DECISION | BLOCKED", body, path.name)
             self.assertIn("Unverifiable statically:", body, path.name)
             self.assertNotIn("delivery channel", body, path.name)
 
-    def test_committed_agents_have_no_model_key_and_effort_matches_role_tier(self) -> None:
-        # 다섯 검문소 역할만 model_reasoning_effort = "xhigh" 를 갖고, 아홉 역할 모두
-        # model 키가 없다 (두 호스트 모두 리드 모델을 상속한다).
-        check_roles = {
-            "team-pl-architect",
-            "team-pl-qa-engineer",
-            "team-pl-integration-reviewer",
-            "team-pl-code-reviewer",
-            "team-pl-security-reviewer",
-        }
-        production_roles = {
-            "team-pl-product-analyst",
-            "team-pl-backend-engineer",
-            "team-pl-frontend-engineer",
-            "team-pl-data-engineer",
-        }
+    def test_committed_agents_have_no_model_key_and_effort_matches_frontmatter(self) -> None:
+        # 아홉 역할 모두 model 키가 없고(Codex 는 리드 모델 상속; Claude alias 는 옮길 수 없다),
+        # model_reasoning_effort 는 .md 프론트매터의 effort 와 같다.
+        md_paths = sorted(AGENTS_DIR.glob("team-pl-*.md"))
         toml_paths = sorted(CODEX_DIR.glob("team-pl-*.toml"))
-        self.assertEqual(check_roles | production_roles, {p.stem for p in toml_paths})
-        for path in toml_paths:
-            data = tomllib.loads(path.read_text(encoding="utf-8"))
-            self.assertNotIn("model", data, path.name)
-            if path.stem in check_roles:
-                self.assertEqual("xhigh", data.get("model_reasoning_effort"), path.name)
-            else:
-                self.assertNotIn("model_reasoning_effort", data, path.name)
+        self.assertEqual({p.stem for p in md_paths}, {p.stem for p in toml_paths})
+        for md_path, toml_path in zip(md_paths, toml_paths):
+            fm, _ = bca.parse_agent(md_path.read_text(encoding="utf-8"))
+            data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+            self.assertNotIn("model", data, toml_path.name)
+            self.assertEqual(fm["effort"], data.get("model_reasoning_effort"), toml_path.name)
 
 
 if __name__ == "__main__":
