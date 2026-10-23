@@ -2,7 +2,8 @@
 name: team-pl-product-analyst
 description: PL-team product analyst. Role session; spawned by the PL lead only.
 tools: Read, Grep, Glob
-model: inherit
+model: sonnet
+effort: medium
 maxTurns: 40
 ---
 

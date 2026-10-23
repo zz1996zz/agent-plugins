@@ -5,12 +5,11 @@ Codex cannot bundle agents inside a plugin (openai/codex#18988), so the generate
 files under agents/codex/ are copied into $CODEX_HOME/agents/ by install-codex.sh.
 Source of truth stays agents/team-pl-*.md; never edit the TOML by hand.
 
-Every role session inherits the model of the parent (lead) session on both
-hosts, so the generated TOML never sets `model` — Codex subagents inherit the
-parent session's model when the key is absent. Only the frontmatter `effort`
-value (set on the five check roles) becomes `model_reasoning_effort`; roles
-that inherit effort too simply omit the key. `maxTurns` has no Codex
-counterpart and is dropped. `sandbox_mode` is still emitted as defense in
+The frontmatter `model` is a Claude Code alias (`opus`, `sonnet`) with no Codex
+counterpart, so the generated TOML never sets `model` — Codex subagents inherit
+the parent session's model when the key is absent. The frontmatter `effort`
+value becomes `model_reasoning_effort`; a role without `effort` omits the key.
+`maxTurns` has no Codex counterpart and is dropped. `sandbox_mode` is still emitted as defense in
 depth, but Codex currently ignores it in custom agent files (the parent
 session's sandbox applies), so the generated TOML says so in a comment and the
 read-only rule lives in the prose, where it is enforced for both hosts.

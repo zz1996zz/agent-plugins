@@ -89,7 +89,7 @@ Common rules:
 
 - Role definitions are personal agents at `${CODEX_HOME:-~/.codex}/agents/team-pl-<role>.toml`, installed by the plugin's `install-codex.sh`. If one is missing, stop and tell the user to run the installer; never fall back silently to generic subagents.
 - Confirm `spawn_agent` exists in your tool list before any feature work; an empty `wait_agent` proves nothing. Without it, report that role sessions are unavailable and continue with labeled lead role passes only if the user explicitly accepts.
-- Pass `agent_type` on every spawn and no model or effort override; the TOML carries the role's instructions (with the shared preamble) and, for check roles, `model_reasoning_effort`. The TOML's sandbox is not applied — the parent session's sandbox is — so the no-edit rule in the brief is the only boundary for read-only roles; say so in the feature note's Residual risk when the parent sandbox allows writes.
+- Pass `agent_type` on every spawn and no model or effort override; the TOML carries the role's instructions (with the shared preamble) and each role's `model_reasoning_effort` (roles inherit the lead's model on this host). The TOML's sandbox is not applied — the parent session's sandbox is — so the no-edit rule in the brief is the only boundary for read-only roles; say so in the feature note's Residual risk when the parent sandbox allows writes.
 - On a session failure, re-spawn once with the same brief, then record the gap. After a session restore, treat earlier sessions as gone and re-spawn what the ledger still needs.
 
 ## Workflow

@@ -1,6 +1,6 @@
 {
   "name": "pl",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "PL/테크리드 오케스트레이션 — 역할 서브에이전트 토론·구현·검증, 결정 히스토리는 레포의 docs/pl 에 기록.",
   "author": {
     "name": "JeongSu"

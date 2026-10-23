@@ -61,7 +61,7 @@ Spawn roles only from the `team-pl-*` definitions through the host mapping in SK
 
 ## Model and tool policy
 
-- Every role inherits the lead's model (`model: inherit`); never pass a model or effort override when spawning. Check roles (`architect`, `qa-engineer`, `code-reviewer`, `security-reviewer`, `integration-reviewer`) set `effort: xhigh` in their definition; production roles inherit effort.
+- Each role definition fixes its own `model` and `effort`; never pass a model or effort override when spawning. Judging roles (`architect`, `code-reviewer`, `security-reviewer`, `integration-reviewer`) run on `opus` at `high`; producing roles (`qa-engineer`, `backend-engineer`, `frontend-engineer`, `data-engineer`) run on `sonnet` at `high`; `product-analyst` runs on `sonnet` at `medium`. No role uses `xhigh`: on current models it costs several times `high` for no measured gain on single-memo work. On a host whose agent definitions carry no model, roles inherit the lead's model and keep the effort.
 - Every role has `maxTurns`. A session that hits it returns a partial memo; resume it to finish or record `partial` in the ledger's Team Lifecycle.
 - Read-only roles (product analyst, architect, security reviewer, integration reviewer) have no edit tools and no Bash. QA and code reviewer have Bash for safe verification commands only. Engineers edit only files the lead assigned. The brief repeats the no-edit rule in words; never rely on a sandbox to enforce it.
 - Smaller lead models follow instructions literally and do not generalize from one item to another; state each instruction's scope explicitly in their briefs ("apply to every module, not only the first").

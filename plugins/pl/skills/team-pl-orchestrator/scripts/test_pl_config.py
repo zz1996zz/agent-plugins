@@ -39,9 +39,18 @@ ROLE_TOOLS = {
     "team-pl-security-reviewer": {"Read", "Grep", "Glob"},
     "team-pl-integration-reviewer": {"Read", "Grep", "Glob"},
 }
-CHECK_ROLES = {
-    "team-pl-architect", "team-pl-qa-engineer", "team-pl-code-reviewer",
-    "team-pl-security-reviewer", "team-pl-integration-reviewer",
+# Model and effort per role (references/roles.md, Model and tool policy): judging roles run on
+# opus, producing roles on sonnet; no role uses xhigh (Opus 5.5 / Sonnet 5.5 effort guidance).
+ROLE_MODEL = {
+    "team-pl-product-analyst": ("sonnet", "medium"),
+    "team-pl-architect": ("opus", "high"),
+    "team-pl-qa-engineer": ("sonnet", "high"),
+    "team-pl-backend-engineer": ("sonnet", "high"),
+    "team-pl-frontend-engineer": ("sonnet", "high"),
+    "team-pl-data-engineer": ("sonnet", "high"),
+    "team-pl-code-reviewer": ("opus", "high"),
+    "team-pl-security-reviewer": ("opus", "high"),
+    "team-pl-integration-reviewer": ("opus", "high"),
 }
 # Host vocabulary stays in SKILL.md's Platform Behavior; references and agent bodies are host-neutral.
 HOST_WORDS = ("SendMessage", "TaskList", "TaskStop", "spawn_agent", "send_input", "close_agent", "Agent Teams", "Claude Code", "Codex")
@@ -101,12 +110,10 @@ class RoleDefinitionTests(unittest.TestCase):
             tools = {t.strip() for t in fm["tools"].split(",")}
             self.assertEqual(ROLE_TOOLS[path.stem], tools, path.name)
             self.assertFalse(tools & TEAM_TOOLS, path.name)
-            self.assertEqual("inherit", fm["model"], path.name)
+            model, effort = ROLE_MODEL[path.stem]
+            self.assertEqual(model, fm["model"], path.name)
+            self.assertEqual(effort, fm["effort"], path.name)
             self.assertTrue(int(fm["maxTurns"]) > 0, path.name)
-            if path.stem in CHECK_ROLES:
-                self.assertEqual("xhigh", fm.get("effort"), path.name)
-            else:
-                self.assertNotIn("effort", fm, path.name)
             self.assertNotIn("hooks", fm, f"{path.name}: plugin agents ignore hooks frontmatter")
 
     def test_role_bodies_are_host_neutral_and_carry_contract(self) -> None:
