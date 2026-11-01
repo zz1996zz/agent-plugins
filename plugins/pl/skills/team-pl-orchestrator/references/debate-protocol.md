@@ -1,6 +1,6 @@
 # Debate Protocol
 
-The discussion-to-close loop for `full` work. `light` work runs only Implementation, Review Loop (one cycle), and Close.
+The discussion-to-close loop for `full` work. `light`는 Implementation·리뷰 1회·Close를 수행한다. 리뷰에서 수정이 필요하면 같은 reviewer를 재개해 확인하며 아래 three cycles 상한을 따른다.
 
 ## Round 0: Brief
 

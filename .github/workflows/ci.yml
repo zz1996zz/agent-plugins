@@ -43,6 +43,8 @@ jobs:
           python3 "$S/test_pl_config.py"
           python3 "$S/test_pl_history.py"
           python3 "$S/test_hooks.py"
+          python3 "$S/test_memo.py"
+          python3 -m unittest discover -s tests/pl-codex -p 'test_*.py'
           # tomllib 이 없는 3.9/3.10 에서는 스스로 skip 한다.
           python3 "$S/test_build_codex_agents.py"
           if python3 -c 'import tomllib' 2>/dev/null; then python3 "$S/build_codex_agents.py" --check; fi
@@ -77,6 +79,7 @@ jobs:
           S=plugins/pl/skills/team-pl-orchestrator/scripts
           python3 "$S/test_pl_history.py"
           python3 "$S/test_hooks.py"
+          python3 "$S/test_memo.py"
 
   plugin-validate:
     name: claude plugin validate

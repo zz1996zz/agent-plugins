@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# pl 의 Codex 역할 에이전트를 $CODEX_HOME/agents/ 에 설치한다.
+# pl의 선택 설치용 Codex 역할 에이전트를 $CODEX_HOME/agents/에 설치한다.
 #
-# 왜 필요한가: Codex 플러그인은 skills/·hooks/ 는 번들하지만 custom agents 는 번들하지 못한다
-# (openai/codex#18988, open). 그래서 `codex plugin add pl@zz1996zz` 뒤에 이 스크립트를 한 번
-# 돌려야 `$pl` 이 역할 세션을 스폰할 수 있다. 이슈가 닫혀 plugin.json 에 agents 필드가 생기면
-# 이 스크립트와 README 의 3단계 설치 안내를 제거한다.
+# custom agent type을 노출하는 호스트에서 이름으로 역할을 선택할 때만 사용한다.
+# 설치가 없어도 PL은 번들 Markdown 역할 본문을 brief에 담아 일반 subagent로 실행한다.
+# 기존 개인 TOML과 충돌하면 내용을 먼저 검토한다. 생성 TOML은 모델·effort를 지정하지 않으며
+# 사용자 config의 일반 subagent 기본값을 존중한다.
 #
 # 종료 코드: 0 = 전부 설치됨 · 3 = 충돌/건너뜀 있음(그 파일만 두고 나머지는 설치됨)
 #            · 1 = 복사 실패(권한, 심볼릭 링크 대상) · 2 = 소스 없음 / 알 수 없는 옵션

@@ -1,23 +1,10 @@
 #!/usr/bin/env python3
-"""Generate Codex CLI custom-agent TOML files from the Claude Code agent definitions.
+"""공유 역할 정의로부터 선택 설치용 Codex custom-agent TOML을 생성한다.
 
-Codex cannot bundle agents inside a plugin (openai/codex#18988), so the generated
-files under agents/codex/ are copied into $CODEX_HOME/agents/ by install-codex.sh.
-Source of truth stays agents/team-pl-*.md; never edit the TOML by hand.
-
-Every role session inherits the model of the parent (lead) session on both
-hosts, so the generated TOML never sets `model` — Codex subagents inherit the
-parent session's model when the key is absent. Only the frontmatter `effort`
-value (set on the five check roles) becomes `model_reasoning_effort`; roles
-that inherit effort too simply omit the key. `maxTurns` has no Codex
-counterpart and is dropped. `sandbox_mode` is still emitted as defense in
-depth, but Codex currently ignores it in custom agent files (the parent
-session's sandbox applies), so the generated TOML says so in a comment and the
-read-only rule lives in the prose, where it is enforced for both hosts.
-
-The shared role preamble (references/roles.md, between the preamble markers)
-is prepended to every `developer_instructions`, because on Codex the lead's
-brief may be shorter than on Claude Code and the definition must stand alone.
+원본은 agents/team-pl-*.md와 references/roles.md의 shared preamble이다.
+Claude의 model·effort·tools·maxTurns를 Codex 설정으로 변환하지 않는다.
+Codex의 일반 subagent 기본값은 외부 config가 결정하고, sandbox는 부모의
+설정을 따른다. 역할의 편집 범위는 공유 본문과 lead brief에 명시한다.
 """
 
 from __future__ import annotations
@@ -34,10 +21,6 @@ DEFAULT_OUT_DIR = DEFAULT_AGENTS_DIR / "codex"
 ROLES_MD = SCRIPT_DIR.parent / "references" / "roles.md"
 PREAMBLE_START = "<!-- preamble:start -->"
 PREAMBLE_END = "<!-- preamble:end -->"
-
-# Claude tools that mutate the working tree. Their presence decides the advisory sandbox_mode.
-EDIT_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
-
 
 def load_preamble(roles_md: Path = ROLES_MD) -> str:
     text = roles_md.read_text(encoding="utf-8")
@@ -78,9 +61,6 @@ def _toml_multiline(value: str) -> str:
 
 def render_toml(frontmatter: dict[str, str], body: str, preamble: str = "") -> str:
     name = frontmatter["name"]
-    tools = {t.strip() for t in frontmatter.get("tools", "").split(",") if t.strip()}
-    sandbox = "workspace-write" if tools & EDIT_TOOLS else "read-only"
-    effort = frontmatter.get("effort")
     if preamble:
         body = preamble.rstrip("\n") + "\n\n" + body
     lines = [
@@ -88,11 +68,6 @@ def render_toml(frontmatter: dict[str, str], body: str, preamble: str = "") -> s
         f"name = {_toml_string(name)}\n",
         f"description = {_toml_string(frontmatter.get('description', ''))}\n",
     ]
-    if effort:
-        lines.append(f"model_reasoning_effort = {_toml_string(effort)}\n")
-    lines.append("# advisory: Codex applies the parent session's sandbox and ignores this key in custom agent files;\n")
-    lines.append("# the no-edit rule in developer_instructions is the enforced boundary.\n")
-    lines.append(f"sandbox_mode = {_toml_string(sandbox)}\n")
     lines.append(f"developer_instructions = {_toml_multiline(body)}\n")
     return "".join(lines)
 

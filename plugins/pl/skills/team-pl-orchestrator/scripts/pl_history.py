@@ -1086,6 +1086,25 @@ def cmd_diff(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_memo(args: argparse.Namespace) -> int:
+    """hook 전달 여부와 무관하게 lead가 수신한 최종 응답을 저장한다."""
+    resolved = _resolved_from_args(args)
+    stem = feature_stem(resolved.root, args.feature)
+    agent_id = single_line(args.agent_id, "agent id")
+    message = sys.stdin.read()
+    if not re.match(r"\AStatus: (DONE|NEEDS_DECISION|BLOCKED)(?:\r?\n|\Z)", message):
+        raise HistoryError("memo must begin with Status: DONE | NEEDS_DECISION | BLOCKED")
+    # 호스트의 ID는 경로 형태일 수도 있으므로 파일명으로 직접 사용하지 않는다.
+    key = hashlib.sha256(agent_id.encode("utf-8")).hexdigest()
+    response_key = hashlib.sha256(message.encode("utf-8")).hexdigest()
+    runtime = runtime_dir(resolved.root, stem)
+    path = runtime / "memos" / f"{key}-{response_key}.md"
+    ensure_inside(resolved.root, path, "memo")
+    atomic_write(path, message)
+    print(path)
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     resolved = _resolved_from_args(args)
     if args.withdraw:
@@ -1371,6 +1390,12 @@ def build_parser() -> argparse.ArgumentParser:
     diff.add_argument("--base", help="commit to diff from (default: HEAD + uncommitted + untracked)")
     diff.add_argument("--work")
     diff.set_defaults(func=cmd_diff)
+
+    memo = sub.add_parser("memo", help="save a delivered role memo from stdin (no hook required)")
+    memo.add_argument("--feature", required=True)
+    memo.add_argument("--agent-id", required=True, help="opaque session identity returned by the host")
+    memo.add_argument("--work")
+    memo.set_defaults(func=cmd_memo)
 
     lst = sub.add_parser("list", help="list notes from frontmatter (no index file)")
     lst.add_argument("--type", choices=("feature", "decision"))

@@ -11,6 +11,8 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -226,7 +228,7 @@ class HookTests(unittest.TestCase):
         claude_cmd = claude["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         codex_cmd = codex["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         self.assertEqual(f"{GUARD_COMMAND} --scope role", claude_cmd)
-        self.assertEqual(GUARD_COMMAND, codex_cmd)
+        self.assertEqual('python3 "${PLUGIN_ROOT}/hooks/guard.py"', codex_cmd)
         self.assertEqual("Bash", claude["hooks"]["PreToolUse"][0]["matcher"])
         self.assertEqual("^pl:team-pl-", claude["hooks"]["SubagentStop"][0]["matcher"])
         self.assertIn("memo_capture.py", claude["hooks"]["SubagentStop"][0]["hooks"][0]["command"])
@@ -235,6 +237,22 @@ class HookTests(unittest.TestCase):
         self.assertFalse((HOOKS_DIR / "guard.sh").exists())
         for script in ("guard.py", "memo_capture.py"):
             self.assertTrue(os.access(HOOKS_DIR / script, os.X_OK), script)
+
+    def test_codex_command_hook_runs_with_native_plugin_root(self) -> None:
+        config = json.loads((HOOKS_DIR / "hooks.codex.json").read_text())
+        command = config["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "plugin with spaces"
+            root.symlink_to(PLUGIN_DIR, target_is_directory=True)
+            env = dict(os.environ, PLUGIN_ROOT=str(root))
+            env.pop("CLAUDE_PLUGIN_ROOT", None)
+            result = subprocess.run(
+                ["/bin/sh", "-c", command], env=env, capture_output=True, text=True,
+                input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                                  "tool_input": {"command": "git push --force origin main"}}),
+            )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("deny", json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"])
 
     def test_python_helpers_import_on_this_interpreter(self) -> None:
         for path in (SCRIPT_DIR / "pl_history.py", HOOKS_DIR / "guard.py", HOOKS_DIR / "memo_capture.py"):

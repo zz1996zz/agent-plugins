@@ -16,11 +16,11 @@ hooks:
 
 Gate: if you have not yet loaded the orchestrator skill for this request, do nothing else — no analysis, no clarifying question, no code exploration — load it first, then follow it. On Claude Code invoke `pl:team-pl-orchestrator` with the `Skill` tool; on Codex read `../team-pl-orchestrator/SKILL.md` relative to this file and follow it — `<skill-dir>` in the orchestrator means that `team-pl-orchestrator` directory, not this one. Re-load it whenever its instructions are no longer in context (after context compaction or a session restore).
 
-Treat explicit invocation (`/pl:pl` or `$pl`) as explicit permission to use the team PL workflow for the current request, including role-session discussion, implementation, verification, and history updates in the repository.
+명시 호출(`/pl:pl`, `$pl`, `pl:pl`)은 현재 요청에 역할 세션·구현·검증·히스토리 기록을 사용하는 허가다. Codex에서는 frontmatter의 `Skill(...)`, `hooks`, `$ARGUMENTS` 치환을 실행 기능으로 가정하지 않는다. 본문에서 지시한 상대 경로를 직접 읽고 실제 사용자 요청을 전달한다.
 
 ## Hard rules (binding even when the orchestrator skill is not loaded)
 
-- For non-trivial feature work, do not begin implementation until the orchestrator has sized the work and spawned the required role sessions from the `team-pl-*` definitions through its host mapping; never substitute ordinary standalone helpers. A request that adds a new file or a test, or that contains the word `full`, is never a solo pass.
+- 비단순 작업은 orchestrator가 규모와 역할을 정한 뒤 host mapping의 단계 순서를 따른다. `full`은 분석 역할 응답 뒤에 구현하고, `light`는 리드 구현 뒤 reviewer를 실행한다. 역할은 `team-pl-*` 정의를 사용한다. 새 파일·테스트 추가나 `full` 요청은 solo가 아니다.
 - Do not commit, push, merge, deploy, publish, or mutate external systems unless the user explicitly requested that action.
 - For non-trivial feature work, record the feature note in the repository history and close it with `pl_history.py close` before reporting. A solo pass on a routine change writes no note. Never report `done` without fresh verification evidence.
 

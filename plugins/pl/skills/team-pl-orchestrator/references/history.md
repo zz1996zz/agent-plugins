@@ -20,7 +20,7 @@ Run `where` first in every non-solo request; it prints the mode and root, create
     <feature stem>/
       ledger.md                     Execution Ledger, Team Lifecycle, Wave Baselines (written by `ledger`)
       evidence.jsonl                verification runs (written by `verify`)
-      memos/<agent id>.md           role memos (written by the host's memo-capture hook where it runs; else by the lead)
+      memos/<id or hash>.md         role memos (hook는 ID, lead의 memo 명령은 SHA-256 파일명 사용)
       diff.patch                    review diff (written by `diff`)
     current                         stem of the feature the lead is working on (written by `feature`/`current`, cleared by `close`)
 ```
@@ -36,6 +36,7 @@ There is no index file. `list` builds the listing from frontmatter when you need
 | `decision "<title>" --feature <stem> [--supersedes <file>]` | Create a decision note linked both ways (keep the title to a short noun phrase — it becomes the file name); a superseded note gets `status: superseded` and `superseded_by`, never deleted. |
 | `list [--type feature\|decision] [--status <s>]` | Listing from frontmatter. |
 | `current [--feature <stem>]` | Show or set the current feature. `feature` sets it; `close` clears it. `ledger` and `diff` default to it. |
+| `memo --feature <stem> --agent-id <id>` | lead가 수신한 최종 응답 원문을 stdin으로 받아 `.runtime/<stem>/memos/<ID 해시>-<응답 해시>.md`에 저장하고 경로를 출력한다. 첫 줄에 유효한 `Status:`가 필요하다. 같은 응답의 재저장은 동일 경로이고 재개 응답은 새 파일이므로 이전 증거를 보존한다. 반환 ID와 경로를 ledger에 함께 기록한다. hook 실행과 무관하며 `current` 대신 feature를 명시한다. |
 | `ledger row <task> [--owner] [--depends] [--deliverable] [--status] [--evidence]` | Insert or update one Execution Ledger row (keyed by task; omitted fields keep their value). Use it for Round 0 rows, after each wave, and at close. |
 | `ledger lifecycle <Spawned\|Replaced\|Partial\|Failed\|Not spawned> "<label (agent id)>"` | Append to a Team Lifecycle field — record every spawn, replacement, partial, failure, and planned-but-not-spawned role here; `close --status done` refuses when Partial or Failed is non-empty. |
 | `ledger baseline "<wave label>"` | Snapshot `git status --porcelain` under Wave Baselines before a delegated wave; the change-shape gate compares against it. |

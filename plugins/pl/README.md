@@ -4,7 +4,7 @@
 
 **`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 서브에이전트가 토론하고, 구현하고, 검증하고, 결정을 레포에 남깁니다**
 
-![version](https://img.shields.io/badge/version-0.5.1-blue)
+![version](https://img.shields.io/badge/version-0.6.1-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![history](https://img.shields.io/badge/history-docs%2Fpl%20in%20repo-7c3aed)
@@ -54,11 +54,12 @@ flowchart LR
 ```
 codex plugin marketplace add zz1996zz/agent-plugins
 codex plugin add pl@zz1996zz
-bash "$(ls -d "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/zz1996zz/pl/*/ | sort -V | tail -1)install-codex.sh"
-# codex 에서 /hooks 로 pl 훅 신뢰 (1회)
+# 안전 command hook도 사용하려면 codex에서 /hooks로 현재 hook 정의를 신뢰한다.
 ```
 
-세 번째 줄이 필요한 이유: Codex 플러그인은 skills·hooks는 번들하지만 역할 에이전트 정의는 번들하지 못합니다 ([openai/codex#18988](https://github.com/openai/codex/issues/18988)). `install-codex.sh`가 `agents/codex/*.toml`을 `~/.codex/agents/`에 복사합니다(`--prune`으로 옛 역할 정리, `--force`로 덮어쓰기). 훅이 발동하지 않으면 `~/.codex/config.toml`에 `[features] hooks = true`를 확인하세요.
+개인 agent 설치 없이 사용할 수 있습니다. PL은 번들 `agents/team-pl-*.md`의 역할 본문과 shared preamble을 일반 subagent brief에 전달합니다. 호스트가 custom `agent_type`을 노출하고 해당 역할이 로드된 경우에는 이름으로 선택할 수도 있습니다. 이 선택 경로에만 `bash <설치된 plugin 경로>/install-codex.sh`를 사용합니다. 기존 개인 TOML과 충돌하면 자동으로 덮어쓰지 않습니다. 모델·effort는 Codex의 `[agents]` 기본값 등 외부 config가 결정하며 PL은 override하지 않습니다. [공식 subagent 문서](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+
+Codex의 skill frontmatter hook과 Claude `Skill` 도구에 의존하지 않습니다. command hook을 신뢰하지 않았거나 실행 환경이 지원하지 않아도 lead가 memo를 저장하고 `verify`·리뷰·`close`를 직접 수행합니다. prompt·agent hook handler는 건너뛸 수 있으므로 핵심 작업에 사용하지 않습니다. [공식 hook 설정](https://learn.chatgpt.com/docs/config-file/config-reference)
 
 ## 사용
 
@@ -69,7 +70,7 @@ $pl <기능 요청>           (Codex CLI)
 
 예: `/pl:pl 주문 취소 API에 부분 취소 지원 추가` · `/pl:pl light 로그 포맷에 요청 ID 추가`
 
-- 역할 세션은 리드 모델을 그대로 상속하므로 비용과 요청 한도는 리드 모델 선택(`claude --model …`, `codex -m …`)으로 통제합니다. 역할마다 `maxTurns`가 있어 폭주하지 않습니다.
+- Claude 역할은 `model: inherit`와 `maxTurns`, 검사 역할의 `effort: xhigh`를 유지합니다. Codex 역할의 모델·effort는 호스트 기본값을 따르고, Claude의 `maxTurns`를 Codex에서 보장한다고 가정하지 않습니다.
 - 분석 단계에서 나온 **제품 범위 결정은 한 번에 모아 사용자에게 묻습니다.** 기술 결정은 리드가 합니다.
 - `done`은 리드가 `pl_history.py verify`로 돌린 검증 명령이 **최종 코드 변경 뒤에** 모두 통과했을 때만 `close`가 허용합니다. 역할 세션의 "테스트 통과" 주장은 증거가 아닙니다.
 
@@ -127,14 +128,14 @@ protectedPaths:                   # 역할 세션은 절대, 리드는 명시 �
 - 셸 문법을 이해합니다: `env git …`, `sh -c "…"`, `xargs`, `$( )`, 백슬래시 개행은 판정하고, 커밋 메시지·heredoc 본문·리다이렉션(`2>&1`)은 명령으로 보지 않습니다.
 - 해제 옵션은 없습니다. 정말 필요하면 프롬프트에 `! <명령>`으로 직접 실행하세요.
 
-**적용 범위** — pl을 쓰지 않는 세션에는 영향이 없습니다.
+**적용 범위** — Claude는 PL 세션 범위이고, Codex plugin hook은 신뢰 후 다른 세션에도 적용됩니다. hook 미실행 시 기계적 차단을 보장하지 않습니다.
 
 | 호스트 | 리드 | 역할 세션 |
 |---|---|---|
 | Claude Code | `/pl:pl`을 실행한 순간부터 그 세션이 끝날 때까지(스킬 frontmatter 훅) | 항상(플러그인 훅이 `agent_type`이 `pl:team-pl-*`일 때만 판정) |
 | Codex CLI | 항상(플러그인 훅; 스킬 단위 훅이 없음) | 항상 |
 
-Codex에서는 새 플러그인 훅을 처음 한 번 `/hooks`에서 신뢰해야 합니다. 판정은 `tests/pl-guard/run-unit.sh`(121케이스)로 고정됩니다.
+Codex에서는 새 플러그인 hook 정의를 `/hooks`에서 신뢰해야 합니다. 판정은 `tests/pl-guard/run-unit.sh`로 검증합니다.
 
 ## 호스트 차이
 
@@ -142,11 +143,11 @@ Codex에서는 새 플러그인 훅을 처음 한 번 `/hooks`에서 신뢰해�
 
 | | Claude Code | Codex CLI |
 |---|---|---|
-| 스폰 | `Agent`(`pl:team-pl-<role>`, `name` 없음) | `spawn_agent`(`team-pl-<role>`) |
-| 재개 / 중지 | `SendMessage` / `TaskStop` | `send_input`·`resume_agent` / `close_agent` |
-| 역할 메모 저장 | 플러그인 SubagentStop 훅이 `pl:team-pl-*` 세션의 메모를 `.runtime/<feature>/memos/`에 자동 저장(다른 에이전트에는 아무 동작 없음) | 리드가 기록 |
-| 역할별 허용 도구 | 에이전트 `tools` 목록(`maxTurns`, 검사 역할 `effort: xhigh`) | TOML의 `sandbox_mode`는 **적용되지 않는다**(공식 문서; 부모 세션 샌드박스가 적용). 읽기 전용 규칙은 `developer_instructions` 산문 |
-| 역할 정의 설치 | 플러그인에 번들 | `install-codex.sh`로 `~/.codex/agents/`에 복사 |
+| 스폰 | `Agent`(`pl:team-pl-<role>`, `name` 없음) | 실제 schema에 맞는 `spawn_agent`; 역할 본문 전달 또는 지원되는 custom type. 필수 `task_name` 전달 |
+| 재개 / 중지 | `SendMessage` / `TaskStop` | CLI: `send_input`·`resume_agent` / `close_agent`; collaboration: `followup_task` / `interrupt_agent` |
+| 역할 메모 저장 | SubagentStop hook의 자동 저장은 보조 수단; 최종 응답이 원본 | lead가 `pl_history.py memo --feature <stem> --agent-id <id>`의 stdin에 수신 원문을 전달 |
+| 역할별 허용 도구 | 에이전트 `tools` 목록(`maxTurns`, 검사 역할 `effort: xhigh`) | 부모 sandbox·도구 권한 적용. 역할 본문과 brief의 편집 제한은 산문 계약이며 강제 접근 제어가 아님 |
+| 역할 정의 설치 | 플러그인에 번들 | 본문 전달은 설치 불필요. custom type 사용 시에만 개인 TOML 선택 설치 |
 | Agent Teams | 켜 둔 사용자도 동작합니다(이름 없는 스폰은 teammate로 바뀌지 않음). 끄기를 권장: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0` | 해당 없음 |
 | 진입점 | `disable-model-invocation`으로 `/pl:pl` 명시 호출만 | description 기반 암묵 호출 허용 |
 
@@ -167,7 +168,7 @@ pl은 단독으로 완결입니다. Claude Code에서는 아래와 자연스럽�
 /plugin update pl@zz1996zz
 ```
 
-Codex CLI: `codex plugin marketplace upgrade` → `codex plugin remove pl@zz1996zz && codex plugin add pl@zz1996zz` → `install-codex.sh --force --prune`.
+Codex CLI: `codex plugin marketplace upgrade` 후 plugin을 다시 설치합니다. 개인 custom agent를 사용하는 경우에만 기존 TOML과 새 생성본을 비교한 뒤 `install-codex.sh`로 갱신합니다. 예전 생성본에 남아 있는 `model_reasoning_effort = "xhigh"`는 사용자 기본값보다 우선할 수 있습니다.
 
 히스토리는 레포 안에 있으므로 플러그인 업데이트·삭제의 영향을 받지 않습니다. 플러그인 데이터 디렉터리에는 로컬 모드 `config.json`만 있습니다.
 

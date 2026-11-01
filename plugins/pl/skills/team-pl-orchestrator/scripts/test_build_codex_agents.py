@@ -57,13 +57,13 @@ class BuildCodexAgentsTests(unittest.TestCase):
         self.assertTrue(body.startswith("You are the sample check role."))
         self.assertNotIn("---", body.splitlines()[0])
 
-    def test_render_check_role_has_effort_and_no_model_key(self) -> None:
+    def test_render_check_role_respects_host_defaults(self) -> None:
         fm, body = bca.parse_agent(CHECK_ROLE_SAMPLE)
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-check", data["name"])
-        self.assertEqual("xhigh", data["model_reasoning_effort"])
-        self.assertEqual("read-only", data["sandbox_mode"])
+        self.assertNotIn("model_reasoning_effort", data)
+        self.assertNotIn("sandbox_mode", data)
         self.assertNotIn("model", data)
         self.assertIn("Second paragraph with a '''triple quote''' inside.", data["developer_instructions"])
         self.assertTrue(toml_text.startswith("# Generated from"))
@@ -73,11 +73,11 @@ class BuildCodexAgentsTests(unittest.TestCase):
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-production", data["name"])
-        self.assertEqual("workspace-write", data["sandbox_mode"])
+        self.assertNotIn("sandbox_mode", data)
         self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
-    def test_render_edit_tools_give_advisory_workspace_write(self) -> None:
+    def test_render_does_not_translate_claude_tool_policy_to_sandbox(self) -> None:
         fm, body = bca.parse_agent(
             CHECK_ROLE_SAMPLE.replace("tools: Read, Grep, Glob", "tools: Read, Write, Edit, Bash").replace(
                 "effort: xhigh\n", ""
@@ -85,8 +85,7 @@ class BuildCodexAgentsTests(unittest.TestCase):
         )
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
-        self.assertEqual("workspace-write", data["sandbox_mode"])
-        self.assertIn("# advisory:", toml_text)
+        self.assertNotIn("sandbox_mode", data)
         self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
@@ -193,9 +192,8 @@ class BuildCodexAgentsTests(unittest.TestCase):
             self.assertIn("Unverifiable statically:", body, path.name)
             self.assertNotIn("delivery channel", body, path.name)
 
-    def test_committed_agents_have_no_model_key_and_effort_matches_role_tier(self) -> None:
-        # 다섯 검문소 역할만 model_reasoning_effort = "xhigh" 를 갖고, 아홉 역할 모두
-        # model 키가 없다 (두 호스트 모두 리드 모델을 상속한다).
+    def test_committed_agents_leave_model_effort_and_sandbox_to_host(self) -> None:
+        # Claude의 검사 역할 effort를 Codex의 외부 기본값에 덮어쓰지 않는다.
         check_roles = {
             "team-pl-architect",
             "team-pl-qa-engineer",
@@ -214,10 +212,8 @@ class BuildCodexAgentsTests(unittest.TestCase):
         for path in toml_paths:
             data = tomllib.loads(path.read_text(encoding="utf-8"))
             self.assertNotIn("model", data, path.name)
-            if path.stem in check_roles:
-                self.assertEqual("xhigh", data.get("model_reasoning_effort"), path.name)
-            else:
-                self.assertNotIn("model_reasoning_effort", data, path.name)
+            self.assertNotIn("model_reasoning_effort", data, path.name)
+            self.assertNotIn("sandbox_mode", data, path.name)
 
 
 if __name__ == "__main__":
