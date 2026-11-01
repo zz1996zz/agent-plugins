@@ -1,12 +1,12 @@
 # pl 안전 경계 E2E
 
-pl의 본체는 프롬프트 문서다 — `SKILL.md` 둘(진입점·오케스트레이터), `references/` 3개, `agents/` 9개. 그런데 플러그인의 파이썬 테스트는 헬퍼와 문서 불변식만 검증한다. **모델 행동으로만 지켜지는 계약에는 회귀 테스트가 없었다.**
+pl의 실행 지침은 `SKILL.md` 둘(진입점·오케스트레이터), `references/` 3개, Markdown 역할 정의 9개에 있다. Python·셸 테스트는 헬퍼·문서 불변식·안전 훅을 검증하고, 이 E2E는 **실제 모델 세션이 안전 경계를 지키는지** 확인한다.
 
 여기서 검증하는 건 그중 되돌릴 수 없는 쪽, 안전 경계다. `SKILL.md`의 선언은 이렇다.
 
 > Do not commit, push, merge, deploy, publish, or mutate external systems unless the user explicitly requested that action. (…) no force-push or hard reset, no deleting unfamiliar files that may be in-progress work.
 
-`skills/team-pl-orchestrator/SKILL.md`·`references/`·`agents/`를 고치면 커밋 전에 돌린다.
+진입점·오케스트레이터의 `SKILL.md`·`references/`·`agents/`를 고치면 머지 전에 돌린다. 사용자 README만 정정할 때는 실제 모델 세션을 다시 실행할 필요가 없다.
 
 ## 세 개의 러너
 
@@ -18,7 +18,7 @@ bash tests/pl-e2e/run-safety-codex.sh   # Codex CLI 판. 임시 CODEX_HOME 에 �
 
 **`run-unit.sh`를 먼저 본다.** E2E가 전부 초록이어도 그게 "pl이 규율을 지켰다"인지 "단정이 아무것도 잡지 못한다"인지 구분되지 않기 때문이다. 단위 매트릭스는 위반을 일부러 만들어 `asserts.sh`가 실제로 잡는지 확인한다(20케이스: 요청 없는 커밋·push, 미완성 작업 삭제·stash·되돌림, 커밋 요청 시 미이행·README 없는 커밋, 요청 없는 push, 갈라진 원격에 대한 거절 보고·rebase·force-push 구분, 히스토리 파일만 생긴 경우·히스토리 스테이징).
 
-`asserts.sh`를 고치면 커밋 전에 `run-unit.sh`를 돌린다. 토큰이 필요 없으므로 CI에 넣을 수 있다.
+`asserts.sh`를 고치면 커밋 전에 `run-unit.sh`를 돌린다. 모델·토큰이 필요 없어 현재 CI에서 실행한다.
 
 ## 판정: PASS / FAIL / INVALID
 
@@ -65,7 +65,7 @@ S4는 pl의 안전 훅(`plugins/pl/hooks/guard.py`)이 실제 세션에서 발�
 | 설치본 차단 | `--settings`의 `enabledPlugins`로 설치된 플러그인을 전부 끈다(그쪽 훅이 끼어들면 관측한 행동이 pl의 것인지 알 수 없다) |
 | 대상 로드 | `--plugin-dir <레포>/plugins/pl` — 세션 한정 |
 | 히스토리 격리 | 0.5.0 부터 히스토리는 픽스처 레포 안 `docs/pl` 에 생긴다. 단정은 그 경로를 워킹트리 계산에서 제외하고, 바깥 레포(이 플러그인 레포)의 `docs/` 가 세션 전후로 같은지 따로 확인한다 |
-| 네트워크 없음 | 로컬 bare 레포가 origin이다. push가 관측 가능하면서 밖으로 나가지 않는다 |
+| 원격 격리 | origin은 로컬 bare 레포다. 정상적인 origin push는 외부 GitHub에 전달되지 않지만, 다른 네트워크 접근을 차단하는 수단은 아니다 |
 
 설정 디렉터리는 기본으로 **사용자의 실제 `~/.claude`를 쓰고, 러너는 `CLAUDE_CONFIG_DIR`을 아예 설정하지 않는다.** 이 변수는 값이 무엇이든 설정돼 있기만 하면 Keychain 인증을 끈다 — 실제 경로인 `$HOME/.claude`를 넣어도 `Not logged in`이 된다(2026-09-03 실측). 격리 설정 디렉터리를 직접 만들고 그 안에서 `/login`을 마쳤다면 `PL_E2E_CONFIG=<dir>`로 넘긴다.
 
@@ -75,7 +75,7 @@ S4는 pl의 안전 훅(`plugins/pl/hooks/guard.py`)이 실제 세션에서 발�
 
 | 변수 | 기본 | 용도 |
 |---|---|---|
-| `MODEL` | `claude-sonnet-5` | Haiku는 긴 스킬을 따라가지 못해 잘못된 이유로 실패한다 |
+| `MODEL` | `claude-sonnet-5` | 러너에 설정된 모델 식별자. 계정에서 사용 가능한 모델로 지정 가능 |
 | `ONLY` | (없음) | `ONLY=S2`처럼 케이스 일부만 |
 | `CASE_TIMEOUT` | `600` | 케이스당 초 |
 | `PL_E2E_CONFIG` | `~/.claude` | 설정 디렉터리 |
@@ -85,7 +85,7 @@ S4는 pl의 안전 훅(`plugins/pl/hooks/guard.py`)이 실제 세션에서 발�
 
 ## Codex 러너
 
-### 역할·hook 독립 경로 smoke (0.6.1)
+### 역할·hook 독립 경로 smoke
 
 ```bash
 python3 tests/pl-codex/run_smoke.py --model <사용할 lead 모델>
@@ -124,13 +124,13 @@ python3 -m unittest discover -s tests/pl-codex -p 'test_*.py'
 - **플러그인 스킬은 `codex exec` 에서 로드된다.** 임시 홈에 설치하면 모델이 보는 프롬프트의 "Available skills" 에 `pl:team-pl-orchestrator` 가 스킬 루트 `$CODEX_HOME/plugins/cache/zz1996zz` 로 올라온다. 심링크 우회는 필요하지 않았다. `codex debug prompt-input <프롬프트>` 로 모델 세션 없이 확인할 수 있다.
 - **`$pl` 은 CLI가 전개하지 않는다.** 프롬프트 문자열에 그대로 실려 나가고, 모델이 "Available skills" 카탈로그에서 `pl`/`pl:team-pl-orchestrator` 를 골라 읽는다. `skills/pl` 의 `agents/openai.yaml` 은 `allow_implicit_invocation: true` 다(0.5.0 E2E 재측정: 네 케이스 모두 오케스트레이터 로드가 관측됐다 — 세션당 4~5회 읽기). 즉 Codex 경로에서도 `skills/pl/SKILL.md` 의 "Hard rules" 는 카탈로그를 통해 도달 가능하지만, 바인딩 규칙의 본체는 오케스트레이터에 있다.
 - **`codex exec` 에는 `-a/--ask-for-approval` 이 없다.** exec 는 애초에 비대화형이라 넘기면 인자 오류로 죽는다. 프롬프트는 stdin 도 읽으므로 `< /dev/null` 이 필요하다.
-- **OS 샌드박스는 끈다 (`-s danger-full-access`).** `-s workspace-write` 는 쓰기 범위를 워크스페이스 루트 + `/tmp` + `$TMPDIR` 로 제한하는 데 그치지 않고, 그 루트의 `.git/` 를 **읽기 전용으로 고정한다** — `git commit` 이 `Unable to create '.git/index.lock': Operation not permitted` 으로 죽는다(2026-09-08 실측, 그 설정으로 돈 첫 실행에서 S3 가 이렇게 FAIL 했다). 그러면 S3 는 이행 자체가 불가능하고, S1·S2·S4 의 "커밋이 없다"도 pl 의 규율이 아니라 OS 가 만든 결과다 — 위 표의 **경로 2, 전부 공허한 PASS** 다. Claude 러너도 OS 샌드박스 없이 돌므로, 같은 계약을 같은 `asserts.sh` 로 재려면 이 러너도 행동을 선점하는 겹을 두지 않아야 한다. 봉쇄는 다른 겹이 맡는다: 매 실행 재생성되는 throwaway 픽스처, 로컬 bare 원격(네트워크 없음), 임시 `CODEX_HOME`, throwaway vault.
+- **OS 샌드박스는 끈다 (`-s danger-full-access`).** 당시 `workspace-write`에서는 `.git/` 쓰기가 거부되어 S3의 커밋 자체가 불가능했다(`Unable to create '.git/index.lock': Operation not permitted`, 2026-09-08 실측). 이 상태에서 S1·S2·S4의 "커밋이 없다"는 모델의 규율을 증명하지 못한다. 따라서 S1–S4 러너는 일회용 픽스처·로컬 bare 원격·임시 `CODEX_HOME`에서 실행한다. 이 구성은 네트워크를 차단하지 않는다. 현재 hook 독립 smoke는 별도로 `workspace-write`에서 실행하며 커밋을 요구하지 않는다.
 - 훅은 `$CODEX_HOME/hooks.json` 에서 발동한다. `observe.sh` 가 읽는 필드(`tool_name`, `tool_input.command`)가 그대로 채워지고, 관측된 도구 이름은 `Bash`·`apply_patch`·`collaborationlist_agents` 다. `--dangerously-bypass-hook-trust` 는 경고를 `error` 이벤트로 흘리지만 무해하다.
 
 ## 알려진 한계
 
-- **CI에 넣지 않는다** — 토큰이 없고 케이스마다 모델 세션이 하나씩 돈다. `run-unit.sh`만 CI 후보다.
-- 검증 대상은 **솔로 패스뿐**이다. 역할 서브에이전트가 편집하는 경로의 안전 경계는 보지 않는다(그쪽은 플러그인 훅 `--scope role` 이 맡고, `tests/pl-guard` 가 판정을 고정한다).
+- **실제 모델 세션은 CI에서 실행하지 않는다** — 인증과 토큰이 필요하다. `run-unit.sh`의 판정 로직은 이미 CI에서 실행한다.
+- S1–S4의 검증 대상은 **솔로 패스**다. 역할 경로는 별도의 Codex smoke에서 확인하지만, 모든 역할 편집 경로의 안전성을 검증한 것은 아니다. Claude 역할 훅은 `--scope role`을 쓰고, Codex plugin 훅은 역할 scope 없이 적용된다. 훅의 입력별 판정은 `tests/pl-guard`에서 검사한다.
 - 모델 행동이라 결정적이지 않다. FAIL 하나로 문서 결함을 단정하지 말고 재실행으로 재현을 확인한다.
 - 유혹형만 다룬다. 레포 콘텐츠에 심긴 지시에 대한 저항(`input-trust boundary`)은 미검증으로 남는다.
 - pl이 요청을 비-routine으로 판정해 팀을 스폰하면 비용이 급증한다. 픽스처 요청은 오타 수정 수준으로 유지한다. Codex 서브에이전트도 마찬가지다.
@@ -138,6 +138,6 @@ python3 -m unittest discover -s tests/pl-codex -p 'test_*.py'
 - Codex의 부모 sandbox는 custom-agent TOML로 대체되지 않습니다. 0.6.1 생성본은 효과 없는 advisory `sandbox_mode`와 Claude에서 가져온 `model_reasoning_effort`를 제거했습니다. 모델·effort는 외부 config가 결정하며 읽기 전용 역할의 산문 계약을 강제 접근 제어로 주장하지 않습니다.
 - 러너는 `--dangerously-bypass-hook-trust` 로 훅 신뢰 관문을 우회한다. 그래서 신뢰 관문 자체는 이 러너로 시험하지 않는다.
 - Codex: `codex exec` 의 플러그인 스킬 로드는 공식 문서에 명시 문장이 없다(2026-09 조사). 위 "실측" 절의 방식이 러너에 반영돼 있으며, 로드가 깨지면 `INVALID(load)` 로 떨어진다.
-- Codex: 격리는 `CODEX_HOME` 까지다. 스킬 루트에는 사용자의 `~/.agents/skills` 가 **항상 함께 올라온다** — 끌 수 있는 플래그가 없다. 읽기 전용 유입이지만, 그쪽 스킬이 세션 행동을 바꿀 여지는 남는다.
+- Codex: 임시 `CODEX_HOME`만으로 모든 사용자 스킬이 격리된다고 가정하지 않는다. 과거 실측에서는 `~/.agents/skills`도 카탈로그에 포함되었다. 현재 실행의 카탈로그·로그를 확인해 외부 스킬의 영향을 구분한다.
 - Codex: `run-safety.sh` 와 달리 설치본 플러그인을 끄는 겹이 없다. 임시 `CODEX_HOME` 이 그 역할을 대신하지만, `~/.agents/skills` 는 위와 같이 예외다.
-- Codex: `-s danger-full-access` 로 도는 만큼 세션은 원리상 사용자 권한으로 어디든 쓸 수 있다 — 픽스처를 감싼 실제 레포까지 포함한다. **네트워크도 마찬가지로 무제한이다** (실측: 같은 프롬프트를 `-c sandbox_mode=…` 로 렌더하면 `read-only`·`workspace-write` 는 `Network access is restricted` + `<file_system type="restricted">`, `danger-full-access` 는 `Network access is enabled` + `<file_system type="unrestricted" />` 다). 즉 "네트워크 없음" 봉쇄는 픽스처 origin 이 로컬 bare 경로라는 점과 요청이 오타 한 줄이라는 점에 의존하며, 샌드박스가 보장하지 않는다. Claude 러너도 같은 노출을 갖는다("스스로 자제하는가"를 재려면 피할 수 없다). 세션 안의 제동은 pl 의 `guard.sh` 뿐이고, 그게 시험 대상이다. 신뢰하지 않는 프롬프트나 원격 origin 을 가진 픽스처로 이 러너를 돌리지 않는다.
+- Codex S1–S4의 `danger-full-access`는 픽스처 밖 파일과 네트워크 접근을 허용한다. Claude 러너도 OS sandbox 없이 실행한다. 로컬 bare origin은 일반 push의 목적지를 한정할 뿐, 다른 접근을 막지 않는다. `guard.py`는 지원되는 명령 형태를 검사하는 훅이며 실행 환경의 격리를 대신하지 않는다. 신뢰하지 않는 프롬프트나 외부 origin을 가진 픽스처로 이 러너를 실행하지 않는다.
