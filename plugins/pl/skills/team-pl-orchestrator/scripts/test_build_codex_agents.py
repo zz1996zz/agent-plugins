@@ -22,8 +22,7 @@ import build_codex_agents as bca  # noqa: E402
 AGENTS_DIR = SCRIPT_DIR.parents[2] / "agents"
 CODEX_DIR = AGENTS_DIR / "codex"
 
-# 검문소 역할(opus/high)과 프로덕션 역할(sonnet/high)의 예시 프론트매터. 모델 alias 는
-# Claude Code 전용이므로 TOML 에는 어느 쪽도 `model` 키를 남기지 않고 effort 만 옮긴다.
+# Claude 역할별 모델·effort는 유지하되 Codex 일반 subagent 기본값에는 복사하지 않는다.
 CHECK_ROLE_SAMPLE = """---
 name: team-pl-sample-check
 description: Sample check role. Role session; spawned by the PL lead only.
@@ -58,25 +57,25 @@ class BuildCodexAgentsTests(unittest.TestCase):
         self.assertTrue(body.startswith("You are the sample check role."))
         self.assertNotIn("---", body.splitlines()[0])
 
-    def test_render_check_role_has_effort_and_no_model_key(self) -> None:
+    def test_render_check_role_respects_host_defaults(self) -> None:
         fm, body = bca.parse_agent(CHECK_ROLE_SAMPLE)
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-check", data["name"])
-        self.assertEqual("high", data["model_reasoning_effort"])
-        self.assertEqual("read-only", data["sandbox_mode"])
+        self.assertNotIn("model_reasoning_effort", data)
+        self.assertNotIn("sandbox_mode", data)
         self.assertNotIn("model", data)
         self.assertIn("Second paragraph with a '''triple quote''' inside.", data["developer_instructions"])
         self.assertTrue(toml_text.startswith("# Generated from"))
 
-    def test_render_production_role_has_effort_and_no_model_key(self) -> None:
+    def test_render_production_role_respects_host_defaults(self) -> None:
         fm, body = bca.parse_agent(PRODUCTION_ROLE_SAMPLE)
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
         self.assertEqual("team-pl-sample-production", data["name"])
-        self.assertEqual("workspace-write", data["sandbox_mode"])
+        self.assertNotIn("sandbox_mode", data)
         self.assertNotIn("model", data)
-        self.assertEqual("high", data["model_reasoning_effort"])
+        self.assertNotIn("model_reasoning_effort", data)
 
     def test_render_role_without_effort_omits_the_key(self) -> None:
         fm, body = bca.parse_agent(PRODUCTION_ROLE_SAMPLE.replace("effort: high\n", ""))
@@ -85,7 +84,7 @@ class BuildCodexAgentsTests(unittest.TestCase):
         self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
-    def test_render_edit_tools_give_advisory_workspace_write(self) -> None:
+    def test_render_does_not_translate_claude_tool_policy_to_sandbox(self) -> None:
         fm, body = bca.parse_agent(
             CHECK_ROLE_SAMPLE.replace("tools: Read, Grep, Glob", "tools: Read, Write, Edit, Bash").replace(
                 "effort: high\n", ""
@@ -93,8 +92,7 @@ class BuildCodexAgentsTests(unittest.TestCase):
         )
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
-        self.assertEqual("workspace-write", data["sandbox_mode"])
-        self.assertIn("# advisory:", toml_text)
+        self.assertNotIn("sandbox_mode", data)
         self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
@@ -202,17 +200,28 @@ class BuildCodexAgentsTests(unittest.TestCase):
             self.assertIn("Unverifiable statically:", body, path.name)
             self.assertNotIn("delivery channel", body, path.name)
 
-    def test_committed_agents_have_no_model_key_and_effort_matches_frontmatter(self) -> None:
-        # 아홉 역할 모두 model 키가 없고(Codex 는 리드 모델 상속; Claude alias 는 옮길 수 없다),
-        # model_reasoning_effort 는 .md 프론트매터의 effort 와 같다.
-        md_paths = sorted(AGENTS_DIR.glob("team-pl-*.md"))
+    def test_committed_agents_leave_model_effort_and_sandbox_to_host(self) -> None:
+        # Claude의 검사 역할 effort를 Codex의 외부 기본값에 덮어쓰지 않는다.
+        check_roles = {
+            "team-pl-architect",
+            "team-pl-qa-engineer",
+            "team-pl-integration-reviewer",
+            "team-pl-code-reviewer",
+            "team-pl-security-reviewer",
+        }
+        production_roles = {
+            "team-pl-product-analyst",
+            "team-pl-backend-engineer",
+            "team-pl-frontend-engineer",
+            "team-pl-data-engineer",
+        }
         toml_paths = sorted(CODEX_DIR.glob("team-pl-*.toml"))
-        self.assertEqual({p.stem for p in md_paths}, {p.stem for p in toml_paths})
-        for md_path, toml_path in zip(md_paths, toml_paths):
-            fm, _ = bca.parse_agent(md_path.read_text(encoding="utf-8"))
-            data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
-            self.assertNotIn("model", data, toml_path.name)
-            self.assertEqual(fm["effort"], data.get("model_reasoning_effort"), toml_path.name)
+        self.assertEqual(check_roles | production_roles, {p.stem for p in toml_paths})
+        for path in toml_paths:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn("model", data, path.name)
+            self.assertNotIn("model_reasoning_effort", data, path.name)
+            self.assertNotIn("sandbox_mode", data, path.name)
 
 
 if __name__ == "__main__":

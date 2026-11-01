@@ -58,7 +58,7 @@ agent-plugins/
 
 - **[`tests/pl-e2e/`](tests/pl-e2e/README.md)** — pl의 안전 경계 행동 회귀. `run-unit.sh`는 판정 로직만 검증해 토큰이 필요 없고, `run-safety.sh`는 실제 `claude -p` 세션을 돌려 git 부작용으로 판정합니다. pl의 `SKILL.md`·`references/`·`agents/`를 고치면 커밋 전에 돌립니다.
 - **`tests/pl-guard/`** — pl 안전 훅(`plugins/pl/hooks/guard.py`)의 deny/allow 매트릭스. 페이로드를 직접 주입하므로 토큰이 필요 없고 CI에서 돕니다.
-- **`tests/pl-codex/`** — Codex CLI 설치 스크립트(`install-codex.sh`)의 단위 테스트. 실제 Codex 세션 없이 설치 로직만 검증합니다.
+- **`tests/pl-codex/`** — Codex 설치 테스트와 격리된 실제 역할·memo·verify·close smoke. 모델 없는 판정 테스트도 포함합니다.
 
 ## 배포 수칙 (관리자)
 

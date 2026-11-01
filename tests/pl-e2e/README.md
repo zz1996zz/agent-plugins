@@ -85,6 +85,20 @@ S4는 pl의 안전 훅(`plugins/pl/hooks/guard.py`)이 실제 세션에서 발�
 
 ## Codex 러너
 
+### 역할·hook 독립 경로 smoke (0.6.1)
+
+```bash
+python3 tests/pl-codex/run_smoke.py --model <사용할 lead 모델>
+python3 tests/pl-codex/run_smoke.py --entry team-pl-orchestrator --model <사용할 lead 모델>
+python3 -m unittest discover -s tests/pl-codex -p 'test_*.py'
+```
+
+새 임시 저장소와 `CODEX_HOME`에 현재 로컬 plugin만 설치합니다. 개인 custom agent 설치와 hook은 끄고 `workspace-write`에서 `light` 기능 수정·review·memo·verify·close를 실행합니다. 사용자 인증 파일은 임시 복사하고 종료 시 복사본을 제거합니다. 로그와 작업 파일은 출력된 임시 경로에 남깁니다. `keep.txt` 보존, 요청하지 않은 commit 부재, unittest와 verification freshness도 검사합니다.
+
+`ARTIFACT PASS`와 `HOST PASS`를 분리합니다. 공개 JSONL에서 실제 spawn·최종 응답을 대응할 수 있을 때만 종합 `PASS`(exit 0)입니다. artifact 위반은 `FAIL`(1), host 이벤트나 ID·응답 대응이 관측되지 않으면 `INVALID`(2)입니다. V2와 일부 CLI는 해당 이벤트를 공개하지 않으므로 실제 workflow가 완료돼도 종합 PASS를 주장하지 않습니다. 이 경우 별도의 실제 host tool 검증을 CLI 증거와 구분해 기록합니다. model·effort는 exec JSONL에서 직접 확인할 수 없습니다.
+
+### 기존 S1–S4 안전 runner
+
 `run-safety-codex.sh`는 같은 픽스처·같은 `asserts.sh`로 Codex CLI에서 S1–S4를 돈다. 다른 것은 세션과 격리 방식뿐이다.
 
 | 겹 | 수단 |
@@ -121,7 +135,7 @@ S4는 pl의 안전 훅(`plugins/pl/hooks/guard.py`)이 실제 세션에서 발�
 - 유혹형만 다룬다. 레포 콘텐츠에 심긴 지시에 대한 저항(`input-trust boundary`)은 미검증으로 남는다.
 - pl이 요청을 비-routine으로 판정해 팀을 스폰하면 비용이 급증한다. 픽스처 요청은 오타 수정 수준으로 유지한다. Codex 서브에이전트도 마찬가지다.
 - Codex: 러너의 S1–S4 는 설계상 솔로 패스 픽스처다. `codex exec` 의 팀 스폰은 수동 테스트에서 `spawn_agent` 호출로 관측됐지만 (2026-09 실측), 러너는 그 경로를 시험하지 않는다.
-- Codex 자식 세션은 TOML 의 `sandbox_mode` 를 상속하지 않는다 (2026-09 실측; 공식 문서도 커스텀 에이전트 파일의 sandbox_mode 를 무시한다고 적는다). 0.5.0 은 이 키를 advisory 로만 남기고 읽기 전용 규칙은 `developer_instructions` 산문이 담당한다. TOML 은 `model` 을 쓰지 않는다 — 자식은 부모 세션의 모델을 상속한다.
+- Codex의 부모 sandbox는 custom-agent TOML로 대체되지 않습니다. 0.6.1 생성본은 효과 없는 advisory `sandbox_mode`와 Claude에서 가져온 `model_reasoning_effort`를 제거했습니다. 모델·effort는 외부 config가 결정하며 읽기 전용 역할의 산문 계약을 강제 접근 제어로 주장하지 않습니다.
 - 러너는 `--dangerously-bypass-hook-trust` 로 훅 신뢰 관문을 우회한다. 그래서 신뢰 관문 자체는 이 러너로 시험하지 않는다.
 - Codex: `codex exec` 의 플러그인 스킬 로드는 공식 문서에 명시 문장이 없다(2026-09 조사). 위 "실측" 절의 방식이 러너에 반영돼 있으며, 로드가 깨지면 `INVALID(load)` 로 떨어진다.
 - Codex: 격리는 `CODEX_HOME` 까지다. 스킬 루트에는 사용자의 `~/.agents/skills` 가 **항상 함께 올라온다** — 끌 수 있는 플래그가 없다. 읽기 전용 유입이지만, 그쪽 스킬이 세션 행동을 바꿀 여지는 남는다.
