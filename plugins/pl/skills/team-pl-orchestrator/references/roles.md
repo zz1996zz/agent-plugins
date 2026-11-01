@@ -61,7 +61,7 @@ Use these labels in the ledger, the feature note, and the brief so a reader can 
 
 ## Model and tool policy
 
-- spawn 시 모델·effort override를 지정하지 않는다. 정의 frontmatter를 지원하는 호스트의 `model: inherit`, 검사 역할 `effort: xhigh`는 해당 호스트에서만 적용한다. 다른 호스트의 일반 subagent 기본값은 외부 config에 맡긴다.
+- spawn 시 모델·effort override를 지정하지 않는다. 정의 frontmatter를 지원하는 호스트는 0.6.0의 역할별 설정을 유지한다. 판정 역할(`architect`, `code-reviewer`, `security-reviewer`, `integration-reviewer`)은 `opus`/`high`, 생산 역할(`qa-engineer`, `backend-engineer`, `frontend-engineer`, `data-engineer`)은 `sonnet`/`high`, `product-analyst`는 `sonnet`/`medium`이다. 다른 호스트의 일반 subagent 기본값은 외부 config에 맡기고 이 값을 복사하지 않는다.
 - `maxTurns`를 지원하는 호스트에서만 해당 제한이 적용된다. 부분 응답은 재개해 완료하거나 Team Lifecycle에 `partial`로 기록한다.
 - 읽기 전용 역할은 편집·설치·git 상태 변경을 하지 않는다. QA와 code reviewer는 안전한 검증 명령만 실행하며 engineer는 배정된 경로만 편집한다. 도구 목록을 지원하는 호스트는 정의의 허용 목록도 적용한다. 모든 brief에 편집 경계를 명시하며 산문을 sandbox 강제 제약으로 주장하지 않는다.
 - Smaller lead models follow instructions literally and do not generalize from one item to another; state each instruction's scope explicitly in their briefs ("apply to every module, not only the first").

@@ -2,8 +2,8 @@
 name: team-pl-code-reviewer
 description: PL-team code reviewer (post-implementation). Role session; spawned by the PL lead only.
 tools: Read, Bash, Grep, Glob
-model: inherit
-effort: xhigh
+model: opus
+effort: high
 maxTurns: 60
 ---
 

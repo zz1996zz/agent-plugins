@@ -2,8 +2,8 @@
 name: team-pl-qa-engineer
 description: PL-team QA engineer. Role session; spawned by the PL lead only.
 tools: Read, Bash, Grep, Glob
-model: inherit
-effort: xhigh
+model: sonnet
+effort: high
 maxTurns: 60
 ---
 

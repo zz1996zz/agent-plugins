@@ -12,10 +12,10 @@
 
 ## 제약 및 검토 초점
 
-- 사용자 변경·기존 fixture·개인 Codex 설정을 보존한다. commit·push·publish는 하지 않는다.
+- 사용자 변경·기존 fixture·개인 Codex 설정을 보존한다. 초기 작업은 commit·push 없이 수행하고, 후속 사용자 명시 요청에 따라 commit·push·merge를 진행한다. marketplace 배포는 하지 않는다.
 - Claude agent frontmatter와 plugin hook은 유지한다. Codex에만 적용되는 차이를 host mapping에 둔다.
 - `agent_type`이 없는 schema, 필수 `task_name`, 완료 알림과 `wait_agent` 차이, 세션 복구 시 ID 유효성, 신뢰되지 않은 hook을 검증한다.
-- 저장소 manifest 기준 버전은 0.5.1이다. 요청의 0.6.0과 다르므로 원본을 재작성하지 않고 다음 패치 버전 0.6.1로 맞춘다.
+- 로컬 출발 manifest는 0.5.1이었으나 fetch 후 원격 main의 0.6.0을 확인했다. 원격 변경을 통합하고 Claude 역할별 모델·effort를 보존하며 새 버전은 0.6.1로 맞춘다.
 
 ## 작업
 
@@ -32,4 +32,4 @@
 
 ## 최종 확인
 
-2026-11-02 기준: Python 3.11 전체 skill 테스트 109개(1개 opt-in skip), smoke 판정 15개, guard 136개, installer 26개, 기존 E2E 판정 20개 통과. Python 3.9 런타임 개별 테스트도 통과했다. 독립 최종 리뷰 Gate 1·2 통과, 미해결 Critical/Important 없음. 실제 CLI의 alias·본체 artifact PASS와 host trace 미관측을 구분하고, 현재 host 도구의 실제 spawn·재개·memo 전달은 별도 검증했다. [설계·검증 기록](../../pl/decisions/2026-11-02-codex-host-compatibility.md)에 실패 출력·생략 범위를 남겼다.
+2026-11-02 기준: 원격 0.6.0 통합 후 Python 3.11 전체 skill 테스트 110개(1개 opt-in skip), smoke 판정 15개, guard 136개, installer 26개, 기존 E2E 판정 20개 통과. Python 3.9 런타임 개별 테스트도 통과했다. 독립 최종·통합 리뷰 Gate 1·2 통과, 미해결 Critical/Important 없음. 실제 CLI의 alias·본체 artifact PASS와 host trace 미관측을 구분하고, 현재 host 도구의 실제 spawn·재개·memo 전달은 별도 검증했다. [설계·검증 기록](../../pl/decisions/2026-11-02-codex-host-compatibility.md)에 실패 출력·생략 범위를 남겼다.

@@ -7,13 +7,13 @@ date: 2026-11-02
 
 # Codex host 계약에 맞춘 PL 실행
 
-사용자 요청은 PL의 Codex 실사용 개선과 Claude 호환 유지다. [구현 계획](../../superpowers/plans/2026-11-01-pl-codex-compatibility.md)을 기준으로 필요한 호스트 경로와 검증만 수정했다. 시작 시 작업 트리는 깨끗했고 `main`에서 `fix/pl-codex-compatibility`를 만들었다. 저장소 manifest의 실제 시작 버전은 요청에 적힌 0.6.0과 달리 0.5.1이었다. 두 manifest와 배지를 0.6.1로 맞췄으며 commit·push·publish는 하지 않았다.
+사용자 요청은 PL의 Codex 실사용 개선과 Claude 호환 유지다. [구현 계획](../../superpowers/plans/2026-11-01-pl-codex-compatibility.md)을 기준으로 필요한 호스트 경로와 검증만 수정했다. 시작 시 작업 트리는 깨끗했고 `main`에서 `fix/pl-codex-compatibility`를 만들었다. 로컬 시작 manifest는 0.5.1이었으나, 후속 commit·push·merge 요청에서 fetch한 원격 `main`에는 PL 0.6.0(`f276f89`)이 있었다. 이를 feature branch에 통합해 0.6.0의 Claude 역할별 설정을 보존하고 두 manifest와 배지를 0.6.1로 맞췄다. 초기 구현·검증 단계에서는 commit·push를 하지 않았으며 후속 사용자 지시로 통합한다. marketplace 배포는 하지 않는다.
 
 ## 결정
 
 - 역할 Markdown과 shared preamble은 하나로 유지한다. Claude의 plugin agent·Skill·skill hook·SubagentStop 경로는 유지한다. Codex에서는 실제 schema에 `agent_type`이 없거나 등록 역할을 확인할 수 없으면 역할 본문을 일반 subagent brief에 전달한다. 개인 TOML 설치를 필수로 만들지 않는다.
 - Codex task 식별자는 label과 분리한다. 예를 들어 `pl-review`는 `task_name: pl_review`로 전달한다. `fork_turns: none` 또는 지원되는 `fork_context: false`로 완결된 brief를 독립 실행한다. 실제 ephemeral CLI 실행에서 이름 제한과 부모 rollout 부재 오류를 확인한 데 따른 수정이다.
-- 일반 Codex subagent의 모델·effort는 외부 config에 맡긴다. Claude 검사 역할의 `effort: xhigh`는 그대로 두지만 생성 TOML에는 model·effort·효과 없는 sandbox 키를 넣지 않는다. 예전 TOML의 고정 effort나 본문 차이가 발견되면 정의 전달 경로를 사용한다. 개인 설정을 자동으로 덮어쓰지 않는다.
+- 일반 Codex subagent의 모델·effort는 외부 config에 맡긴다. Claude는 0.6.0의 역할별 `opus`/`sonnet`, `high`/`medium` 설정을 그대로 보존하지만 생성 TOML에는 model·effort·효과 없는 sandbox 키를 넣지 않는다. 예전 TOML의 고정 effort나 본문 차이가 발견되면 정의 전달 경로를 사용한다. 개인 설정을 자동으로 덮어쓰지 않는다.
 - command/MCP tool hook도 미신뢰·미지원이면 실행되지 않을 수 있다. lead가 memo 수신·저장·verify·review·close를 직접 수행한다. Codex의 prompt/agent handler, skill-frontmatter hook, SubagentStop 또는 transcript 형식에 핵심 동작을 맡기지 않는다. Codex hook 경로 변수는 네이티브 `PLUGIN_ROOT`를 사용한다. `Bash` matcher는 현재 Codex에서도 유효하다.
 - `memo` CLI는 명시적 feature·호스트 반환 ID·수신 응답으로 기록한다. `<ID 해시>-<응답 해시>.md`로 경로 형태 ID를 안전하게 처리하고 재개 전 원문을 보존한다. 동일 응답 재저장은 멱등적이다. hook과 기존 history 상태 판정은 재작성하지 않는다.
 - smoke는 artifact와 host 관측을 분리한다. 관측된 위반은 FAIL(1), 필수 host 증거 부족은 INVALID(2), 둘 다 입증됐을 때만 PASS(0)다. V2의 UUID·task_name을 동일 namespace로 가정하지 않는다. 언어는 사용자 지침을 따르고 역할 필드명은 유지한다.
@@ -64,8 +64,8 @@ skill-creator 원본 validator는 기존 Claude 확장 키(`hooks`, `user-invoca
 | Python 3.9 `test_pl_history.py` | 63개, OK |
 | Python 3.9 `test_hooks.py` | 6개, OK |
 | Python 3.9 `test_memo.py` | 6개, OK |
-| Python 3.11 `test_build_codex_agents.py` 및 generator `--check` | 13개 OK, 생성본 9개 drift 없음 |
-| Python 3.11 전체 skill scripts `unittest discover` | 109개, OK, opt-in 1개 skip |
+| Python 3.11 `test_build_codex_agents.py` 및 generator `--check` | 14개 OK, 생성본 9개 drift 없음 |
+| Python 3.11 전체 skill scripts `unittest discover` | 110개, OK, opt-in 1개 skip |
 | Python 3.9 smoke 판정 `unittest discover -s tests/pl-codex` | 15개, OK |
 | `tests/pl-guard/run-unit.sh` | PASS=136 FAIL=0 |
 | `tests/pl-codex/run-install-unit.sh` | 26개 PASS, FAIL=0 |
@@ -96,6 +96,8 @@ team-pl-orchestrator original exit 1 Unexpected key(s) in SKILL.md frontmatter: 
 ```
 
 history 테스트가 출력한 unresolved placeholder 경고는 의도적으로 미완성 note를 검사하는 fixture의 예상 출력이다. 안전 E2E의 기존 저장소 fixture·사용자 개인 config는 변경하지 않았다. 임시 테스트 fixture 내부의 git 동작은 실제 작업 브랜치와 외부 원격에 영향을 주지 않는다.
+
+원격 0.6.0 통합 직후에는 이전 upstream 테스트가 Codex effort 복사를 기대해 `KeyError: 'model_reasoning_effort'`로 실패했다. 외부 기본값을 존중하는 이번 요구에 맞춰 기대값을 갱신한 뒤 generator 14개와 전체 매트릭스를 재실행해 통과했다. 통합 리뷰에서도 역할 Markdown 9개가 `origin/main`과 완전히 동일함을 확인했고 새 Critical/Important는 없었다.
 
 ## 변경 파일
 

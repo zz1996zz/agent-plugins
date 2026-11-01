@@ -22,14 +22,13 @@ import build_codex_agents as bca  # noqa: E402
 AGENTS_DIR = SCRIPT_DIR.parents[2] / "agents"
 CODEX_DIR = AGENTS_DIR / "codex"
 
-# 검문소 역할(effort: xhigh 유지)과 프로덕션 역할(effort 없음, 리드 상속)의 예시 프론트매터.
-# 모델은 두 역할군 모두 `inherit` — TOML 에는 어느 쪽도 `model` 키를 남기지 않는다.
+# Claude 역할별 모델·effort는 유지하되 Codex 일반 subagent 기본값에는 복사하지 않는다.
 CHECK_ROLE_SAMPLE = """---
 name: team-pl-sample-check
 description: Sample check role. Role session; spawned by the PL lead only.
 tools: Read, Grep, Glob
-model: inherit
-effort: xhigh
+model: opus
+effort: high
 ---
 
 You are the sample check role.
@@ -41,7 +40,8 @@ PRODUCTION_ROLE_SAMPLE = """---
 name: team-pl-sample-production
 description: Sample production role. Role session; spawned by the PL lead only.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: inherit
+model: sonnet
+effort: high
 ---
 
 You are the sample production role.
@@ -52,8 +52,8 @@ class BuildCodexAgentsTests(unittest.TestCase):
     def test_parse_agent_splits_frontmatter_and_body(self) -> None:
         fm, body = bca.parse_agent(CHECK_ROLE_SAMPLE)
         self.assertEqual("team-pl-sample-check", fm["name"])
-        self.assertEqual("inherit", fm["model"])
-        self.assertEqual("xhigh", fm["effort"])
+        self.assertEqual("opus", fm["model"])
+        self.assertEqual("high", fm["effort"])
         self.assertTrue(body.startswith("You are the sample check role."))
         self.assertNotIn("---", body.splitlines()[0])
 
@@ -68,7 +68,7 @@ class BuildCodexAgentsTests(unittest.TestCase):
         self.assertIn("Second paragraph with a '''triple quote''' inside.", data["developer_instructions"])
         self.assertTrue(toml_text.startswith("# Generated from"))
 
-    def test_render_production_role_has_neither_key(self) -> None:
+    def test_render_production_role_respects_host_defaults(self) -> None:
         fm, body = bca.parse_agent(PRODUCTION_ROLE_SAMPLE)
         toml_text = bca.render_toml(fm, body)
         data = tomllib.loads(toml_text)
@@ -77,10 +77,17 @@ class BuildCodexAgentsTests(unittest.TestCase):
         self.assertNotIn("model", data)
         self.assertNotIn("model_reasoning_effort", data)
 
+    def test_render_role_without_effort_omits_the_key(self) -> None:
+        fm, body = bca.parse_agent(PRODUCTION_ROLE_SAMPLE.replace("effort: high\n", ""))
+        toml_text = bca.render_toml(fm, body)
+        data = tomllib.loads(toml_text)
+        self.assertNotIn("model", data)
+        self.assertNotIn("model_reasoning_effort", data)
+
     def test_render_does_not_translate_claude_tool_policy_to_sandbox(self) -> None:
         fm, body = bca.parse_agent(
             CHECK_ROLE_SAMPLE.replace("tools: Read, Grep, Glob", "tools: Read, Write, Edit, Bash").replace(
-                "effort: xhigh\n", ""
+                "effort: high\n", ""
             )
         )
         toml_text = bca.render_toml(fm, body)
@@ -185,7 +192,8 @@ class BuildCodexAgentsTests(unittest.TestCase):
             fm, body = bca.parse_agent(path.read_text(encoding="utf-8"))
             tools = {t.strip() for t in fm["tools"].split(",")}
             self.assertFalse(tools & team_tools, path.name)
-            self.assertEqual("inherit", fm["model"], path.name)
+            self.assertIn(fm["model"], {"opus", "sonnet"}, path.name)
+            self.assertIn(fm["effort"], {"medium", "high"}, path.name)
             self.assertTrue(fm.get("maxTurns", "").isdigit() and int(fm["maxTurns"]) > 0, path.name)
             self.assertIn("Your lane:", body, path.name)
             self.assertIn("Status: DONE | NEEDS_DECISION | BLOCKED", body, path.name)

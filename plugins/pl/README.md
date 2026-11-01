@@ -70,7 +70,7 @@ $pl <기능 요청>           (Codex CLI)
 
 예: `/pl:pl 주문 취소 API에 부분 취소 지원 추가` · `/pl:pl light 로그 포맷에 요청 ID 추가`
 
-- Claude 역할은 `model: inherit`와 `maxTurns`, 검사 역할의 `effort: xhigh`를 유지합니다. Codex 역할의 모델·effort는 호스트 기본값을 따르고, Claude의 `maxTurns`를 Codex에서 보장한다고 가정하지 않습니다.
+- Claude는 0.6.0의 역할별 설정을 유지합니다. 판정 역할은 `opus`/`high`, 생산 역할과 QA는 `sonnet`/`high`, product-analyst는 `sonnet`/`medium`입니다. Codex 역할의 모델·effort는 외부 config의 일반 subagent 기본값을 따르고, Claude의 `maxTurns`를 Codex에서 보장한다고 가정하지 않습니다.
 - 분석 단계에서 나온 **제품 범위 결정은 한 번에 모아 사용자에게 묻습니다.** 기술 결정은 리드가 합니다.
 - `done`은 리드가 `pl_history.py verify`로 돌린 검증 명령이 **최종 코드 변경 뒤에** 모두 통과했을 때만 `close`가 허용합니다. 역할 세션의 "테스트 통과" 주장은 증거가 아닙니다.
 
@@ -146,7 +146,7 @@ Codex에서는 새 플러그인 hook 정의를 `/hooks`에서 신뢰해야 합�
 | 스폰 | `Agent`(`pl:team-pl-<role>`, `name` 없음) | 실제 schema에 맞는 `spawn_agent`; 역할 본문 전달 또는 지원되는 custom type. 필수 `task_name` 전달 |
 | 재개 / 중지 | `SendMessage` / `TaskStop` | CLI: `send_input`·`resume_agent` / `close_agent`; collaboration: `followup_task` / `interrupt_agent` |
 | 역할 메모 저장 | SubagentStop hook의 자동 저장은 보조 수단; 최종 응답이 원본 | lead가 `pl_history.py memo --feature <stem> --agent-id <id>`의 stdin에 수신 원문을 전달 |
-| 역할별 허용 도구 | 에이전트 `tools` 목록(`maxTurns`, 검사 역할 `effort: xhigh`) | 부모 sandbox·도구 권한 적용. 역할 본문과 brief의 편집 제한은 산문 계약이며 강제 접근 제어가 아님 |
+| 역할별 허용 도구 | 에이전트 `tools` 목록(`model`, `effort`, `maxTurns`) | 부모 sandbox·도구 권한 적용. 역할 본문과 brief의 편집 제한은 산문 계약이며 강제 접근 제어가 아님 |
 | 역할 정의 설치 | 플러그인에 번들 | 본문 전달은 설치 불필요. custom type 사용 시에만 개인 TOML 선택 설치 |
 | Agent Teams | 켜 둔 사용자도 동작합니다(이름 없는 스폰은 teammate로 바뀌지 않음). 끄기를 권장: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0` | 해당 없음 |
 | 진입점 | `disable-model-invocation`으로 `/pl:pl` 명시 호출만 | description 기반 암묵 호출 허용 |

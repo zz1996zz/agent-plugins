@@ -2,8 +2,8 @@
 name: team-pl-architect
 description: PL-team architecture reviewer. Role session; spawned by the PL lead only.
 tools: Read, Grep, Glob
-model: inherit
-effort: xhigh
+model: opus
+effort: high
 maxTurns: 50
 ---
 

@@ -2,7 +2,8 @@
 name: team-pl-backend-engineer
 description: PL-team backend engineer. Role session; spawned by the PL lead only.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: inherit
+model: sonnet
+effort: high
 maxTurns: 120
 ---
 
