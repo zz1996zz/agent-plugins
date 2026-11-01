@@ -332,7 +332,8 @@ def judge(argv: list[str]) -> str | None:
                 return "force-push(refspec)"
     elif sub == "reset":
         for token in rest:
-            if opt(token, "--hard"):
+            # Git은 reset --h도 --hard로 받아들인다.
+            if opt(token, "--hard", 3):
                 return "hard reset"
     elif sub == "clean":
         for token in rest:
