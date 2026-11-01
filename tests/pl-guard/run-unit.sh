@@ -140,6 +140,13 @@ b43-herestring          @@@ cat <<< hello\ngit reset --hard                     
 b44-quoted-heredoc-text @@@ echo '\''a <<EOF'\''\ngit reset --hard                            @@@ DENY
 b45-config-hookspath-set @@@ git config core.hooksPath /tmp/x                           @@@ DENY
 b46-config-alias-set    @@@ git config alias.nuke "reset --hard"                       @@@ DENY
+b47-abbrev-hard-ha      @@@ git reset --ha HEAD~1                                     @@@ DENY
+b48-abbrev-hard-h       @@@ git reset --h HEAD~1                                      @@@ DENY
+c06-codex-reset-ha      @@@ git reset --ha HEAD~1                                     @@@ DENY  @@@ codex
+c07-codex-reset-h       @@@ git reset --h HEAD~1                                      @@@ DENY  @@@ codex
+p04-array-reset-ha      @@@ git reset --ha HEAD~1                                     @@@ DENY  @@@ array
+p05-cmd-key-reset-h     @@@ git reset --h HEAD~1                                      @@@ DENY  @@@ cmdkey
+r06-scope-role-reset-h  @@@ git reset --h HEAD~1                                      @@@ DENY  @@@ role:pl:team-pl-backend-engineer
 f08-config-alias-get    @@@ git config alias.nuke                                      @@@ ALLOW
 f06-config-hookspath-get @@@ git config core.hooksPath                                  @@@ ALLOW
 f07-config-get-flag     @@@ git config --get core.hooksPath                             @@@ ALLOW
