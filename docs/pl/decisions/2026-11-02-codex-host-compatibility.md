@@ -99,6 +99,8 @@ history 테스트가 출력한 unresolved placeholder 경고는 의도적으로 
 
 원격 0.6.0 통합 직후에는 이전 upstream 테스트가 Codex effort 복사를 기대해 `KeyError: 'model_reasoning_effort'`로 실패했다. 외부 기본값을 존중하는 이번 요구에 맞춰 기대값을 갱신한 뒤 generator 14개와 전체 매트릭스를 재실행해 통과했다. 통합 리뷰에서도 역할 Markdown 9개가 `origin/main`과 완전히 동일함을 확인했고 새 Critical/Important는 없었다.
 
+PR CI 첫 실행에서는 `ubuntu-latest`가 Ubuntu 26.04로 갱신되어 Python 3.9 설치 단계가 실패했다. 실제 출력은 `The version '3.9' with architecture 'x64' was not found for Ubuntu 26.04.`였다. [공식 Python 배포 manifest](https://github.com/actions/python-versions/blob/main/versions-manifest.json)에서 3.9.25의 x64 Linux 지원 목록이 22.04·24.04임을 확인하고 Python 테스트 job만 `ubuntu-24.04`로 고정했다. Python 3.9~3.13 매트릭스는 축소하지 않았다.
+
 ## 변경 파일
 
 - 진입점·공유 계약: `plugins/pl/skills/pl/SKILL.md`, `plugins/pl/skills/team-pl-orchestrator/SKILL.md`, 같은 디렉터리의 `references/roles.md`, `references/history.md`, `references/debate-protocol.md`.

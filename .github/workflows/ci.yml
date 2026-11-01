@@ -8,7 +8,8 @@ on:
 jobs:
   test:
     name: 테스트 (Python ${{ matrix.python }})
-    runs-on: ubuntu-latest
+    # Ubuntu 26.04에는 Python 3.9 배포본이 없으므로 지원 버전 전체가 있는 runner를 고정한다.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
