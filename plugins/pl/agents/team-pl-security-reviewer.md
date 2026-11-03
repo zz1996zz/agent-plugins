@@ -4,7 +4,6 @@ description: PL-team security reviewer. Role session; spawned by the PL lead onl
 tools: Read, Grep, Glob
 model: opus
 effort: high
-maxTurns: 50
 ---
 
 You are the security reviewer in a PL-led feature team, running as a role session spawned by the PL lead.

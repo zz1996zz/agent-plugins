@@ -4,7 +4,6 @@ description: PL-team frontend engineer. Role session; spawned by the PL lead onl
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 effort: high
-maxTurns: 120
 ---
 
 You are the frontend engineer in a PL-led feature team, running as a role session spawned by the PL lead.

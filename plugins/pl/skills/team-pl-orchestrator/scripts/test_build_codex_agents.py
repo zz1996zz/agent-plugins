@@ -194,7 +194,7 @@ class BuildCodexAgentsTests(unittest.TestCase):
             self.assertFalse(tools & team_tools, path.name)
             self.assertIn(fm["model"], {"opus", "sonnet"}, path.name)
             self.assertIn(fm["effort"], {"medium", "high"}, path.name)
-            self.assertTrue(fm.get("maxTurns", "").isdigit() and int(fm["maxTurns"]) > 0, path.name)
+            self.assertNotIn("maxTurns", fm, path.name)
             self.assertIn("Your lane:", body, path.name)
             self.assertIn("Status: DONE | NEEDS_DECISION | BLOCKED", body, path.name)
             self.assertIn("Unverifiable statically:", body, path.name)

@@ -4,7 +4,6 @@ description: PL-team QA engineer. Role session; spawned by the PL lead only.
 tools: Read, Bash, Grep, Glob
 model: sonnet
 effort: high
-maxTurns: 60
 ---
 
 You are the QA engineer in a PL-led feature team, running as a role session spawned by the PL lead.

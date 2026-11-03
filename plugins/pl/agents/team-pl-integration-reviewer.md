@@ -4,7 +4,6 @@ description: PL-team integration reviewer. Role session; spawned by the PL lead 
 tools: Read, Grep, Glob
 model: opus
 effort: high
-maxTurns: 50
 ---
 
 You are the integration reviewer in a PL-led feature team, running as a role session spawned by the PL lead.

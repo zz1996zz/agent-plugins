@@ -4,7 +4,7 @@
 
 **`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 서브에이전트가 토론하고, 구현하고, 검증하고, 결정을 레포에 남깁니다**
 
-![version](https://img.shields.io/badge/version-0.6.3-blue)
+![version](https://img.shields.io/badge/version-0.7.0-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![history](https://img.shields.io/badge/history-docs%2Fpl%20in%20repo-7c3aed)
@@ -73,7 +73,9 @@ $pl <기능 요청>           (Codex CLI)
 
 예: `/pl:pl 주문 취소 API에 부분 취소 지원 추가` · `/pl:pl light 로그 포맷에 요청 ID 추가`
 
-- Claude는 번들 역할 정의의 모델·effort를 사용합니다. 판정 역할은 `opus`/`high`, 생산 역할과 QA는 `sonnet`/`high`, product-analyst는 `sonnet`/`medium`입니다. Codex 역할의 모델·effort는 외부 config의 일반 subagent 기본값을 따르고, Claude의 `maxTurns`를 Codex에서 보장한다고 가정하지 않습니다.
+- Claude는 번들 역할 정의의 모델·effort를 사용합니다. 판정 역할은 `opus`/`high`, 생산 역할과 QA는 `sonnet`/`high`, product-analyst는 `sonnet`/`medium`입니다. Codex 역할의 모델·effort는 외부 config의 일반 subagent 기본값을 따릅니다.
+- PL 역할에는 고정 턴 상한을 두지 않습니다. 정상적으로 진행 중인 작업은 완료 조건까지 수행하고, 반복 실패·정체·외부 의존성으로 막히면 시도한 내용과 원인을 리드에게 보고합니다. 호스트 자체의 사용량·실행 제한은 적용됩니다.
+- 여러 독립 기능은 같은 역할을 여러 명 배정할 수 있습니다. 예를 들어 주문·검색을 `pl-backend-orders`·`pl-backend-search`가 각각 맡습니다. frontend·data·QA·리뷰·보안·통합·제품 분석·설계 역할도 scope별로 나눌 수 있습니다. 공통 계약을 먼저 맞추고 파일 소유권과 원장 항목을 분리하며, 공통 파일 수정은 순차 통합합니다. 분할 리뷰 뒤 전체 diff의 기능 간 상호작용을 검토하고 리드가 통합 검증합니다. 기능 수만큼 모든 역할을 복제하지는 않습니다.
 - 분석 단계에서 나온 **제품 범위 결정은 한 번에 모아 사용자에게 묻습니다.** 기술 결정은 리드가 합니다.
 - `done`은 리드가 `pl_history.py verify`로 돌린 검증 명령이 **최종 코드 변경 뒤에** 모두 통과했을 때만 `close`가 허용합니다. 역할 세션의 "테스트 통과" 주장은 증거가 아닙니다.
 
@@ -150,7 +152,7 @@ Codex에서는 새 플러그인 hook 정의를 `/hooks`에서 신뢰해야 합�
 | 스폰 | `Agent`(`pl:team-pl-<role>`, `name` 없음) | 실제 schema에 맞는 `spawn_agent`; 역할 본문 전달 또는 지원되는 custom type. 필수 `task_name` 전달 |
 | 재개 / 중지 | `SendMessage` / `TaskStop` | CLI: `send_input`·`resume_agent` / `close_agent`; collaboration: `followup_task` / `interrupt_agent` |
 | 역할 메모 저장 | SubagentStop hook의 자동 저장은 보조 수단; 최종 응답이 원본 | lead가 `pl_history.py memo --feature <stem> --agent-id <id>`의 stdin에 수신 원문을 전달 |
-| 역할별 허용 도구 | 에이전트 `tools` 목록(`model`, `effort`, `maxTurns`) | 부모 sandbox·도구 권한 적용. 역할 본문과 brief의 편집 제한은 산문 계약이며 강제 접근 제어가 아님 |
+| 역할별 허용 도구 | 에이전트 `tools` 목록(`model`, `effort`) | 부모 sandbox·도구 권한 적용. 역할 본문과 brief의 편집 제한은 산문 계약이며 강제 접근 제어가 아님 |
 | 역할 정의 설치 | 플러그인에 번들 | 본문 전달은 설치 불필요. custom type 사용 시에만 개인 TOML 선택 설치 |
 | Agent Teams | PL은 `name` 없는 일반 subagent를 사용합니다. 패널 차이를 사용자가 묻는 경우에만 설정을 안내합니다. | 해당 없음 |
 | 진입점 | `disable-model-invocation`으로 `/pl:pl` 명시 호출만 | description 기반 암묵 호출 허용 |
