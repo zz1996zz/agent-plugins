@@ -62,6 +62,6 @@ README·이 문서·GitHub 설명만 바꾸고 실행 프롬프트와 코드가 
 ## 구현 기준과 확인 출처
 
 - 기록은 기본적으로 작업트리의 `docs/pl/`에 저장하고, 레포 밖에서는 로컬 history 경로를 사용합니다. Obsidian/Notion backend는 현재 제공하지 않습니다. 위치·명령의 기준은 `pl_history.py`와 [`references/history.md`](plugins/pl/skills/team-pl-orchestrator/references/history.md)입니다.
-- Claude Code는 번들 역할 정의의 `tools`·`model`·`effort`·`maxTurns`를 사용합니다. Codex는 실제 도구 schema에 맞춰 역할 본문을 전달하거나 지원되는 custom type을 사용하며, 모델·effort는 외부 config에 맡깁니다. 정확한 호스트별 계약은 [`SKILL.md`](plugins/pl/skills/team-pl-orchestrator/SKILL.md)의 Platform Behavior를 참조합니다.
+- Claude Code는 번들 역할 정의의 `tools`·`model`·`effort`를 사용합니다. 역할에 고정 턴 상한을 설정하지 않으며, 같은 역할도 독립 scope별로 여러 세션을 실행할 수 있습니다. Codex는 실제 도구 schema에 맞춰 역할 본문을 전달하거나 지원되는 custom type을 사용하며, 모델·effort는 외부 config에 맡깁니다. 정확한 호스트별 계약은 [`SKILL.md`](plugins/pl/skills/team-pl-orchestrator/SKILL.md)의 Platform Behavior를 참조합니다.
 - Codex plugin hook은 설치만으로 신뢰되지 않습니다. `/hooks`에서 현재 정의를 검토해야 실행됩니다. 신뢰·미지원·실행 실패와 무관하게 완료 기록은 lead가 직접 수행하도록 설계되어 있습니다. [공식 hooks](https://learn.chatgpt.com/docs/hooks), [공식 subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
 - 설치·업데이트 명령은 2026-11-02에 Claude Code 2.1.316과 Codex CLI 0.166.0의 `--help` 및 공식 문서로 확인했습니다. 이 버전은 확인 환경이며 지원 최소 버전을 뜻하지 않습니다. [Claude Code 설치·관리](https://code.claude.com/docs/en/plugins/install), [Codex plugins](https://learn.chatgpt.com/docs/plugins)

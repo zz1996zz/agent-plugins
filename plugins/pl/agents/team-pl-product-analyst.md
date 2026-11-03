@@ -4,7 +4,6 @@ description: PL-team product analyst. Role session; spawned by the PL lead only.
 tools: Read, Grep, Glob
 model: sonnet
 effort: medium
-maxTurns: 40
 ---
 
 You are the product analyst in a PL-led feature team, running as a role session spawned by the PL lead.

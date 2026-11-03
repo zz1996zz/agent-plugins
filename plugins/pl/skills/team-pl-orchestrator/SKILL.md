@@ -64,6 +64,7 @@ Common rules:
 
 - Explicit invocation of this skill is permission to use role sessions for the current feature unless the user says not to.
 - Only the lead spawns, resumes, or stops role sessions. Role sessions never spawn sessions of their own and never message each other; the lead relays challenges and handoffs.
+- 모든 역할은 독립 scope별로 같은 정의의 복수 세션을 실행할 수 있다. `references/roles.md`의 Role instances·Labels에 따라 고유 라벨·task ID·의존성·소유 경로를 정한다. 같은 단계의 실행 가능한 작업만 병렬 배정하고 호스트 슬롯이 부족하면 기다린다.
 - 역할 세션은 일반 subagent이며 최종 응답이 memo다. 같은 단계의 역할만 묶어서 실행한다. Claude에서는 **never pass a `name`**. Codex schema에 필수인 `task_name`은 전달한다(`pl-review` label은 `pl_review`로 변환; 소문자·숫자·밑줄만 사용). 역할 label과 반환된 session ID의 대응을 ledger에 기록한다.
 - `team-pl-*` 역할 정의와 shared preamble을 아래 mapping으로 적용한다. 정의를 생략한 generic helper, 다른 plugin agent, script 기반 fan-out으로 대체하지 않는다.
 
@@ -79,8 +80,8 @@ Common rules:
 
 ### Claude Code
 
-- Spawn with the `Agent` tool and the plugin-scoped type; a named definition applies its `tools`, `model`, `effort`, and `maxTurns`. Spawns run in the background; their results arrive as completion notifications — continue other work and never fabricate a result before it arrives.
-- A session that hits `maxTurns` returns a partial result; resume it with `SendMessage` to finish, or record `partial`.
+- Spawn with the `Agent` tool and the plugin-scoped type; a named definition applies its `tools`, `model`, and `effort`. Spawns run in the background; their results arrive as completion notifications — continue other work and never fabricate a result before it arrives.
+- 번들 역할에 고정 턴 상한을 설정하지 않는다. 외부 중단·호스트 제한으로 부분 결과가 오면 진행 가능 여부를 확인해 같은 ID로 `SendMessage`를 보내 재개하거나 미완료 상태를 기록한다. 반복 실패·정체는 `references/roles.md`의 Replacement 규칙을 따른다.
 - Before the first spawn, inspect `.claude/agents/` in the current directory, its parents, and every `--add-dir` location for confusable `team-pl-*` definitions (collision rule in `references/roles.md`).
 - After `/resume`, subagent transcripts persist: resume a known agent ID instead of re-spawning when the ledger says its memo is still needed.
 - If Agent Teams is enabled in the user's settings, a named spawn would become a teammate; the no-`name` rule above keeps role sessions as subagents regardless. Recommend turning the flag off only if the user asks why the panel looks different.

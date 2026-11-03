@@ -95,7 +95,9 @@ python3 -m unittest discover -s tests/pl-codex -p 'test_*.py'
 
 새 임시 저장소와 `CODEX_HOME`에 현재 로컬 plugin만 설치합니다. 개인 custom agent 설치와 hook은 끄고 `workspace-write`에서 `light` 기능 수정·review·memo·verify·close를 실행합니다. 사용자 인증 파일은 임시 복사하고 종료 시 복사본을 제거합니다. 로그와 작업 파일은 출력된 임시 경로에 남깁니다. `keep.txt` 보존, 요청하지 않은 commit 부재, unittest와 verification freshness도 검사합니다.
 
-`ARTIFACT PASS`와 `HOST PASS`를 분리합니다. 공개 JSONL에서 실제 spawn·최종 응답을 대응할 수 있을 때만 종합 `PASS`(exit 0)입니다. artifact 위반은 `FAIL`(1), host 이벤트나 ID·응답 대응이 관측되지 않으면 `INVALID`(2)입니다. V2와 일부 CLI는 해당 이벤트를 공개하지 않으므로 실제 workflow가 완료돼도 종합 PASS를 주장하지 않습니다. 이 경우 별도의 실제 host tool 검증을 CLI 증거와 구분해 기록합니다. model·effort는 exec JSONL에서 직접 확인할 수 없습니다.
+`ARTIFACT PASS`와 `HOST PASS`를 분리합니다. JSONL에 생성 이벤트가 없는 V2에서는 임시 홈의 원본 세션 기록도 보존합니다. 부모의 실제 spawn 호출·반환 task 경로, 그 부모에 연결된 자식 UUID·경로, 자식의 최신 완료 응답, 부모가 실제 수신한 응답, 저장 memo를 대조합니다. 텍스트 파일 저장 시 추가된 마지막 개행 1개만 허용하며 본문 변경은 거절합니다. 모든 생성 세션의 증거가 필요하고, 새 미완료 턴이 있으면 이전 DONE을 사용하지 않습니다.
+
+artifact 위반은 `FAIL`(1), 필요한 host 증거가 없으면 `INVALID`(2), 둘 다 충족했을 때만 종합 `PASS`(0)입니다. V2 원본 기록에서도 역할 brief가 암호화될 수 있습니다. 이때 생성·완료·수신은 확인해도 정확한 역할 정의 전달은 미확인이므로 이유를 별도로 표시하고 `INVALID`를 유지합니다. 원본 기록은 이 테스트의 임시 홈에서만 사용하며 PL의 실제 역할·기록 절차가 transcript에 의존하도록 바꾸지 않습니다. model·effort는 검증하지 않습니다.
 
 ### 기존 S1–S4 안전 runner
 

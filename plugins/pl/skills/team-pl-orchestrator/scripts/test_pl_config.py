@@ -115,7 +115,7 @@ class RoleDefinitionTests(unittest.TestCase):
             model, effort = ROLE_MODEL[path.stem]
             self.assertEqual(model, fm["model"], path.name)
             self.assertEqual(effort, fm["effort"], path.name)
-            self.assertTrue(int(fm["maxTurns"]) > 0, path.name)
+            self.assertNotIn("maxTurns", fm, path.name)
             self.assertNotIn("hooks", fm, f"{path.name}: plugin agents ignore hooks frontmatter")
 
     def test_role_bodies_are_host_neutral_and_carry_contract(self) -> None:
