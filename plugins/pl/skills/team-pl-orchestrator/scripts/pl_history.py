@@ -634,49 +634,81 @@ def _ledger_path(root: Path, stem: str) -> Path:
 def ledger_row(root: Path, stem: str, *, task: str, owner: str | None = None, depends: str | None = None,
                deliverable: str | None = None, status: str | None = None, evidence: str | None = None) -> None:
     """Insert or update one Execution Ledger row keyed by Task; None keeps the existing cell."""
-    path = _ledger_path(root, stem)
-    text = path.read_text(encoding="utf-8")
+    ledger_batch(root, stem, {"rows": [dict(task=task, owner=owner, depends=depends,
+                                         deliverable=deliverable, status=status, evidence=evidence)]})
+
+
+def _ledger_rows(text: str) -> dict[str, list[str]]:
     match = re.search(r"(?ms)^## Execution Ledger\n(.*?)(?=^## |\Z)", text)
     if not match:
         raise HistoryError("ledger has no Execution Ledger section")
     lines = match.group(1).splitlines()
     header = [l for l in lines if l.startswith("|")][:2]
     rows = {}
-    order = []
     for line in lines:
         if line.startswith("| ") and line not in header and not line.startswith("|---"):
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            cells = [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line.strip()[1:-1])]
             if len(cells) >= 6:
                 rows[cells[0]] = cells[:6]
-                order.append(cells[0])
+    return rows
+
+
+def _ledger_row_text(text: str, *, task: str, owner: str | None = None, depends: str | None = None,
+                     deliverable: str | None = None, status: str | None = None, evidence: str | None = None) -> str:
+    rows = _ledger_rows(text)
     task = single_line(task, "task")
     existing = rows.get(task, [task, "", "", "", "pending", ""])
     new = list(existing)
     for index, value in enumerate((task, owner, depends, deliverable, status, evidence)):
         if value is not None:
-            new[index] = single_line(value, "ledger cell", allow_empty=True).replace("|", "\\|")
-    if task not in rows:
-        order.append(task)
+            new[index] = single_line(value, "ledger cell", allow_empty=True)
     rows[task] = new
     table = ["| Task | Owner | Depends on | Deliverable | Status | Evidence |", "|---|---|---|---|---|---|"]
-    table += ["| " + " | ".join(rows[k]) + " |" for k in order]
-    atomic_write(path, replace_or_insert_section(text, "Execution Ledger", "\n".join(table), "Team Lifecycle"))
+    table += ["| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |" for row in rows.values()]
+    return replace_or_insert_section(text, "Execution Ledger", "\n".join(table), "Team Lifecycle")
 
 
 def ledger_lifecycle(root: Path, stem: str, *, field: str, value: str) -> None:
     """Append `value` to one Team Lifecycle field (`; `-separated)."""
+    ledger_batch(root, stem, {"lifecycle": [dict(field=field, value=value)]})
+
+
+def _ledger_lifecycle_text(text: str, *, field: str, value: str) -> str:
     if field not in LIFECYCLE_FIELDS:
         raise HistoryError(f"lifecycle field must be one of {', '.join(LIFECYCLE_FIELDS)}: got {field!r}")
-    path = _ledger_path(root, stem)
-    text = path.read_text(encoding="utf-8")
     value = single_line(value, "value")
     pattern = re.compile(rf"(?m)^-[ \t]*{re.escape(field)}:[ \t]*(.*)$")
     match = pattern.search(text)
     if not match:
         raise HistoryError(f"ledger has no `- {field}:` line")
     current = match.group(1).strip()
+    if value in [entry.strip() for entry in current.split(";")]:
+        return text
     joined = f"{current}; {value}" if current else value
-    atomic_write(path, text[: match.start()] + f"- {field}: {joined}" + text[match.end():])
+    return text[: match.start()] + f"- {field}: {joined}" + text[match.end():]
+
+
+def ledger_batch(root: Path, stem: str, payload: dict) -> None:
+    """기존 원장의 행·lifecycle을 모두 검증한 뒤 한 번 저장한다."""
+    if not isinstance(payload, dict) or set(payload) - {"rows", "lifecycle"}:
+        raise HistoryError("ledger batch expects a JSON object with rows and/or lifecycle")
+    stem = feature_stem(root, stem)
+    path = runtime_dir(root, stem) / "ledger.md"
+    text = path.read_text(encoding="utf-8") if path.is_file() else LEDGER_TEMPLATE.format(stem=stem)
+    for key, allowed, required, transform in (
+        ("rows", {"task", "owner", "depends", "deliverable", "status", "evidence"}, {"task"}, _ledger_row_text),
+        ("lifecycle", {"field", "value"}, {"field", "value"}, _ledger_lifecycle_text),
+    ):
+        entries = payload.get(key, [])
+        if not isinstance(entries, list):
+            raise HistoryError(f"ledger batch {key} must be an array")
+        for entry in entries:
+            if (not isinstance(entry, dict) or set(entry) - allowed or required - set(entry)
+                    or any(not isinstance(entry[k], str) for k in required)
+                    or any(v is not None and not isinstance(v, str) for v in entry.values())):
+                raise HistoryError(f"invalid ledger batch {key} entry")
+            text = transform(text, **entry)
+    atomic_write(path, text)
 
 
 def ledger_baseline(root: Path, stem: str, *, label: str, porcelain: str | None = None) -> str:
@@ -1070,6 +1102,12 @@ def cmd_ledger(args: argparse.Namespace) -> int:
                    deliverable=args.deliverable, status=args.status, evidence=args.evidence)
     elif args.ledger_command == "lifecycle":
         ledger_lifecycle(resolved.root, stem, field=args.field, value=args.value)
+    elif args.ledger_command == "batch":
+        try:
+            payload = json.load(sys.stdin)
+        except ValueError as exc:
+            raise HistoryError(f"ledger batch requires valid JSON: {exc}") from exc
+        ledger_batch(resolved.root, stem, payload)
     elif args.ledger_command == "baseline":
         snapshot = ledger_baseline(resolved.root, stem, label=args.label)
         print(snapshot.rstrip())
@@ -1123,6 +1161,7 @@ CHOICE_PLACEHOLDER_PATTERN = re.compile(r"<[^<>\n]*\|[^<>\n]*>")
 COMPLETION_SECTION_PATTERN = re.compile(r"(?ms)^## Completion\n(.*?)(?=^## |\Z)")
 VERIFICATION_SECTION_PATTERN = re.compile(r"(?ms)^## Verification\n(.*?)(?=^## |\Z)")
 TEAM_LINE_PATTERN = re.compile(r"(?m)^-[ \t]*Team:[ \t]*(.*)$")
+GENERATED_TEAM_MARKER = "<!-- pl:team-summary -->"
 DONE_FORBIDDEN_TEAM_TOKENS = ("partial", "failed")
 # `partial 0` / `failed 0` are fine; `partial 1`, `failed: 2`, or a bare word count as gaps.
 _TEAM_GAP_PATTERN = re.compile(r"\b(partial|failed)\b(?!\s*:?\s*(?:0|none|no)\b)", re.I)
@@ -1130,6 +1169,27 @@ _TEAM_GAP_PATTERN = re.compile(r"\b(partial|failed)\b(?!\s*:?\s*(?:0|none|no)\b)
 
 def team_line_gaps(team_text: str) -> list[str]:
     return sorted({m.group(1).lower() for m in _TEAM_GAP_PATTERN.finditer(team_text)})
+
+
+def _completion_team(text: str) -> str:
+    completion = COMPLETION_SECTION_PATTERN.search(text)
+    team = TEAM_LINE_PATTERN.search(completion.group(1)) if completion else None
+    return team.group(1) if team else ""
+
+
+def _with_team_summary(text: str, summary: str | None) -> str:
+    completion = COMPLETION_SECTION_PATTERN.search(text)
+    if not summary or not completion:
+        return text
+    body = completion.group(1)
+    team = TEAM_LINE_PATTERN.search(body)
+    if team and team_line_gaps(team.group(1)) and GENERATED_TEAM_MARKER not in team.group(1):
+        return text  # 수기 실패 기록을 새 원장 집계로 지우지 않는다.
+    line = f"- Team: {summary} {GENERATED_TEAM_MARKER}"
+    body = body[:team.start()] + line + body[team.end():] if team else line + "\n" + body
+    return text[:completion.start(1)] + body + text[completion.end(1):]
+
+
 HTML_COMMENT_PATTERN = re.compile(r"(?s)<!--.*?-->")
 
 
@@ -1149,11 +1209,13 @@ def _verification_rows(text: str) -> int:
     return len([r for r in rows if "| — | — |" not in r])
 
 
-def check(root: Path, *, stem: str | None, assume_status: str | None = None) -> list[str]:
+def check(root: Path, *, stem: str | None, assume_status: str | None = None,
+          assume_team: str | None = None) -> list[str]:
     """Structural integrity of committed notes. Read-only; identical on every clone.
 
     `assume_status` evaluates a single feature as if its status were already that
     value — `close` uses it so placeholder rules apply before the status is written.
+    `assume_team`도 close에서 새 집계를 저장하기 전에 검사할 때만 사용한다.
     """
     problems: list[str] = []
     for note in _note_files(root, stem):
@@ -1185,9 +1247,8 @@ def check(root: Path, *, stem: str | None, assume_status: str | None = None) -> 
             for placeholder in dict.fromkeys(CHOICE_PLACEHOLDER_PATTERN.findall(prose)):
                 problems.append(f"unresolved placeholder: {note} -> {placeholder}")
         if kind == "Feature" and status == "done":
-            completion = COMPLETION_SECTION_PATTERN.search(prose)
-            team = TEAM_LINE_PATTERN.search(completion.group(1)) if completion else None
-            for token in team_line_gaps(team.group(1) if team else ""):
+            team_text = assume_team if assume_team is not None else _completion_team(prose)
+            for token in team_line_gaps(team_text):
                 problems.append(f"done status contradicts Team line: {note} -> {token!r}")
             if _verification_rows(text) == 0:
                 problems.append(f"done status with no verification rows: {note}")
@@ -1209,6 +1270,55 @@ def _lifecycle_problems(root: Path, stem: str) -> list[str]:
         if value and value.lower() not in ("0", "none", "-", "—"):
             problems.append(f"Team Lifecycle {label}: {value} (runtime ledger) — cannot close as done")
     return problems
+
+
+def _team_summary(root: Path, stem: str) -> tuple[str | None, list[str]]:
+    """기록된 spawn과 완료 행만 집계하고 미수신 응답을 완료로 추정하지 않는다."""
+    ledger = runtime_dir(root, stem) / "ledger.md"
+    if not ledger.is_file():
+        return None, []
+    text = ledger.read_text(encoding="utf-8")
+    lifecycle = {}
+    for field in LIFECYCLE_FIELDS:
+        match = re.search(rf"(?m)^-[ \t]*{re.escape(field)}:[ \t]*(.*)$", text)
+        value = match.group(1).strip() if match else ""
+        lifecycle[field] = list(dict.fromkeys(v.strip() for v in value.split(";")
+                                            if v.strip().lower() not in ("", "0", "none", "-", "—")))
+    spawned = lifecycle["Spawned"]
+    if not spawned:
+        return None, []  # 이전 수기 Team은 그대로 보존한다.
+    try:
+        rows = _ledger_rows(text)
+    except HistoryError as exc:
+        return None, [f"cannot summarize ledger: {exc}"]
+    counts = dict(complete=0, partial=0, failed=0)
+    problems = []
+    labels = set()
+    agent_ids = set()
+    for session in spawned:
+        match = re.fullmatch(r"([^\s()]+) \(([^()]+)\)", session)
+        label = match.group(1) if match else session
+        agent_id = match.group(2) if match else ""
+        row = rows.get(f"{label}-memo")
+        state = "partial"
+        if not match or label in labels or agent_id in agent_ids:
+            problems.append(f"invalid or duplicate role identity: {session}")
+        elif any(v == session or v.startswith(label + " (") for v in lifecycle["Failed"]):
+            state = "failed"
+        elif any(v == session or v.startswith(label + " (") for v in lifecycle["Partial"]):
+            pass
+        elif row and row[4] == "done" and row[5]:
+            state = "complete"
+        else:
+            problems.append(f"role {label} has no completed memo row with evidence")
+        labels.add(label)
+        agent_ids.add(agent_id)
+        counts[state] += 1
+    parts = [f"complete {counts['complete']}"]
+    parts += [f"{key} {counts[key]}" for key in ("partial", "failed") if counts[key]]
+    if lifecycle["Not spawned"]:
+        parts.append(f"not spawned {len(lifecycle['Not spawned'])}")
+    return f"{len(spawned)} role sessions ({', '.join(parts)})", problems
 
 
 def _evidence_problems(resolved: Resolved, stem: str) -> tuple[list[str], bool]:
@@ -1253,19 +1363,17 @@ def close_feature(resolved: Resolved, stem: str, status: str) -> list[str]:
     stem = feature_stem(resolved.root, stem)
     path = resolved.root / "features" / f"{stem}.md"
     evidence_problems, fresh = _evidence_problems(resolved, stem)
+    summary, team_problems = _team_summary(resolved.root, stem)
+    proposed = _with_team_summary(path.read_text(encoding="utf-8"), summary)
     problems = [
-        p for p in check(resolved.root, stem=stem, assume_status=status)
+        p for p in check(resolved.root, stem=stem, assume_status=status, assume_team=_completion_team(proposed))
         if "Fresh at close" not in p and "no verification rows" not in p
     ]
     if status == "done":
-        problems += evidence_problems + _lifecycle_problems(resolved.root, stem)
-        text = path.read_text(encoding="utf-8")
-        completion = COMPLETION_SECTION_PATTERN.search(strip_code(text))
-        team = TEAM_LINE_PATTERN.search(completion.group(1)) if completion else None
-        problems += [f"Team line contains {t!r}; close as done-with-risks instead" for t in team_line_gaps(team.group(1) if team else "")]
+        problems += evidence_problems + _lifecycle_problems(resolved.root, stem) + team_problems
     else:
         # done-with-risks / blocked always close: placeholders and links become warnings, not refusals
-        for problem in problems:
+        for problem in problems + team_problems:
             print(f"warning: {problem}", file=sys.stderr)
         problems = []
     if problems:
@@ -1282,7 +1390,7 @@ def close_feature(resolved: Resolved, stem: str, status: str) -> list[str]:
                     record["note"] = "failed at close" if "failed" in problem else "stale at close"
                     _append_evidence(resolved.root, stem, record)
     _write_verification(resolved, stem, closing=stamp)
-    text = path.read_text(encoding="utf-8")
+    text = _with_team_summary(path.read_text(encoding="utf-8"), summary)
     atomic_write(path, _set_frontmatter_field(text, "status", status))
     clear_current(resolved.root, stem)
     return []
@@ -1381,6 +1489,7 @@ def build_parser() -> argparse.ArgumentParser:
     life = ledger_sub.add_parser("lifecycle", help="append to a Team Lifecycle field")
     life.add_argument("field", choices=LIFECYCLE_FIELDS)
     life.add_argument("value")
+    ledger_sub.add_parser("batch", help="apply rows and lifecycle from stdin JSON in one write")
     base = ledger_sub.add_parser("baseline", help="record git status --porcelain under Wave Baselines")
     base.add_argument("label")
     ledger.set_defaults(func=cmd_ledger)

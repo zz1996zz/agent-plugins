@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -304,6 +306,64 @@ class NoteTests(TempDirCase):
         self.assertIn("- Spawned: pl-qa (id)", text)
         self.assertIn("### wave 1", text)
 
+    def test_ledger_batch_cli_updates_rows_and_lifecycle_once(self) -> None:
+        path = ph.create_feature(self.root, "Batch", request="", repo_name="x", date="2026-10-20")
+        payload = {
+            "rows": [
+                {"task": "pl-review-memo", "owner": "pl-review", "deliverable": "review | tests", "status": "pending"},
+                {"task": "pl-architect-memo", "owner": "pl-architect", "status": "pending"},
+            ],
+            "lifecycle": [{"field": "Spawned", "value": "pl-review (id-1)"},
+                          {"field": "Spawned", "value": "pl-architect (id-2)"}],
+        }
+        command = [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "ledger", "--feature", path.stem, "batch"]
+        for _ in range(2):
+            proc = subprocess.run(command, cwd=self.repo, input=json.dumps(payload), capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+        ph.ledger_row(self.root, path.stem, task="pl-review-memo", status="done", evidence="memo-1")
+        text = (ph.runtime_dir(self.root, path.stem) / "ledger.md").read_text(encoding="utf-8")
+        self.assertIn("| pl-review-memo | pl-review |  | review \\| tests | done | memo-1 |", text)
+        self.assertIn("- Spawned: pl-review (id-1); pl-architect (id-2)\n", text)
+        self.assertEqual(1, text.count("| pl-architect-memo |"))
+
+    def test_ledger_batch_rejects_invalid_input_without_partial_write(self) -> None:
+        path = ph.create_feature(self.root, "Batch", request="", repo_name="x", date="2026-10-20")
+        ledger = ph.runtime_dir(self.root, path.stem) / "ledger.md"
+        before = ledger.read_bytes()
+        good = {"task": "pl-review-memo", "status": "pending"}
+        invalid = [
+            {"rows": [good, {"task": "bad", "unknown": "value"}]},
+            {"rows": [good], "lifecycle": [{"field": "Bogus", "value": "x"}]},
+            {"rows": [good], "lifecycle": [{"field": "Spawned", "value": "line\nbreak"}]},
+            {"rows": [good, {"task": 1}]},
+            {"rows": "not a list"},
+            {"unknown": []},
+            [],
+        ]
+        for payload in invalid:
+            with self.subTest(payload=payload), self.assertRaises(ph.HistoryError):
+                ph.ledger_batch(self.root, path.stem, payload)
+            self.assertEqual(before, ledger.read_bytes())
+
+    def test_ledger_batch_cli_rejects_malformed_json(self) -> None:
+        path = ph.create_feature(self.root, "Batch", request="", repo_name="x", date="2026-10-20")
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "pl_history.py"), "ledger", "--feature", path.stem, "batch"],
+            cwd=self.repo, input="{", capture_output=True, text=True,
+        )
+        self.assertEqual(2, proc.returncode)
+        self.assertNotIn("Traceback", proc.stderr)
+
+    def test_ledger_batch_retries_task_with_pipe_and_preserves_cells(self) -> None:
+        path = ph.create_feature(self.root, "Pipe", request="", repo_name="x", date="2026-10-20")
+        payload = {"rows": [{"task": "verify | review", "owner": "lead", "deliverable": "plan | tests"}]}
+        for _ in range(2):
+            ph.ledger_batch(self.root, path.stem, payload)
+        ph.ledger_row(self.root, path.stem, task="verify | review", status="done", evidence="memo | id")
+        text = (ph.runtime_dir(self.root, path.stem) / "ledger.md").read_text(encoding="utf-8")
+        self.assertEqual(1, text.count("| verify \\| review |"))
+        self.assertIn("| verify \\| review | lead |  | plan \\| tests | done | memo \\| id |", text)
+
     def test_feature_stem_accepts_stem_name_or_path(self) -> None:
         f = ph.create_feature(self.root, "Feat", request="", repo_name="x", date="2026-10-20")
         for ref in ("2026-10-20-feat", "2026-10-20-feat.md", str(f), "features/2026-10-20-feat.md"):
@@ -557,6 +617,84 @@ class CheckCloseTests(TempDirCase):
         self.assertEqual(ph.parse_frontmatter(text)["status"], "done")
         self.assertIn("Fresh at close: yes", text)
         self.assertEqual(ph.check(self.root, stem=self.stem), [])
+
+    def test_close_generates_team_from_recorded_sessions(self) -> None:
+        self.fill_size(self.feature)
+        for label, agent_id in (("pl-review", "id-1"), ("pl-architect", "id-2")):
+            ph.ledger_lifecycle(self.root, self.stem, field="Spawned", value=f"{label} ({agent_id})")
+            ph.ledger_row(self.root, self.stem, task=f"{label}-memo", status="done", evidence=f"memo {agent_id}")
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        self.assertEqual([], ph.close_feature(self.resolved, self.stem, "done"))
+        self.assertIn("- Team: 2 role sessions (complete 2)", self.feature.read_text(encoding="utf-8"))
+
+    def test_close_refuses_spawn_without_completed_memo(self) -> None:
+        self.fill_size(self.feature)
+        ph.ledger_lifecycle(self.root, self.stem, field="Spawned", value="pl-review (id-1)")
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        for status, evidence in ((None, None), ("pending", ""), ("done", "")):
+            if status:
+                ph.ledger_row(self.root, self.stem, task="pl-review-memo", status=status, evidence=evidence)
+            problems = ph.close_feature(self.resolved, self.stem, "done")
+            self.assertTrue(any("pl-review" in p and "memo" in p for p in problems), problems)
+        self.assertEqual("in-progress", ph.parse_frontmatter(self.feature.read_text(encoding="utf-8"))["status"])
+
+    def test_close_risk_summary_keeps_unfinished_failed_and_not_spawned(self) -> None:
+        self.fill_size(self.feature)
+        for label in ("pl-review", "pl-qa", "pl-architect"):
+            ph.ledger_lifecycle(self.root, self.stem, field="Spawned", value=f"{label} ({label}-id)")
+        ph.ledger_row(self.root, self.stem, task="pl-review-memo", status="done", evidence="review-id")
+        ph.ledger_lifecycle(self.root, self.stem, field="Failed", value="pl-qa (pl-qa-id)")
+        ph.ledger_lifecycle(self.root, self.stem, field="Not spawned", value="pl-product (unavailable)")
+        self.assertEqual([], ph.close_feature(self.resolved, self.stem, "done-with-risks"))
+        self.assertIn("- Team: 3 role sessions (complete 1, partial 1, failed 1, not spawned 1)",
+                      self.feature.read_text(encoding="utf-8"))
+
+    def test_close_does_not_erase_legacy_team_failure(self) -> None:
+        self.set_team_line("2 role sessions (complete 1, failed 1)")
+        ph.ledger_lifecycle(self.root, self.stem, field="Spawned", value="pl-review (id-1)")
+        ph.ledger_row(self.root, self.stem, task="pl-review-memo", status="done", evidence="memo id-1")
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        problems = ph.close_feature(self.resolved, self.stem, "done")
+        self.assertTrue(any("failed" in p for p in problems), problems)
+        self.assertIn("failed 1", self.feature.read_text(encoding="utf-8"))
+        self.assertEqual([], ph.close_feature(self.resolved, self.stem, "done-with-risks"))
+        self.assertIn("failed 1", self.feature.read_text(encoding="utf-8"))
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        problems = ph.close_feature(self.resolved, self.stem, "done")
+        self.assertTrue(any("failed" in p for p in problems), problems)
+
+    def test_close_refreshes_generated_team_after_resuming_unfinished_work(self) -> None:
+        for status in ("blocked", "done-with-risks"):
+            with self.subTest(status=status):
+                note = ph.create_feature(self.root, status, request="", repo_name="x", date="2026-10-20")
+                self.fill_size(note)
+                ph.ledger_lifecycle(self.root, note.stem, field="Spawned", value="pl-review (id-1)")
+                self.assertEqual([], ph.close_feature(self.resolved, note.stem, status))
+                self.assertIn("partial 1", note.read_text(encoding="utf-8"))
+                ph.ledger_row(self.root, note.stem, task="pl-review-memo", status="done", evidence="memo id-1")
+                ph.run_verify(self.resolved, note.stem, self.py("print(1)"))
+                self.assertEqual([], ph.close_feature(self.resolved, note.stem, "done"))
+                self.assertIn("complete 1", note.read_text(encoding="utf-8"))
+                self.assertNotIn("partial 1", note.read_text(encoding="utf-8"))
+
+    def test_close_rejects_one_session_id_mapped_to_two_labels(self) -> None:
+        self.fill_size(self.feature)
+        for label in ("pl-review", "pl-review-other"):
+            ph.ledger_lifecycle(self.root, self.stem, field="Spawned", value=f"{label} (same-id)")
+            ph.ledger_row(self.root, self.stem, task=f"{label}-memo", status="done", evidence="same memo")
+        ph.run_verify(self.resolved, self.stem, self.py("print(1)"))
+        problems = ph.close_feature(self.resolved, self.stem, "done")
+        self.assertTrue(any("duplicate" in p and "same-id" in p for p in problems), problems)
+
+    def test_close_can_block_with_damaged_ledger_and_preserves_team(self) -> None:
+        self.set_team_line("1 role session (partial 1)")
+        ph.ledger_lifecycle(self.root, self.stem, field="Spawned", value="pl-review (id-1)")
+        ledger = ph.runtime_dir(self.root, self.stem) / "ledger.md"
+        ledger.write_text(ledger.read_text(encoding="utf-8").replace("## Execution Ledger", "## Damaged"), encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual([], ph.close_feature(self.resolved, self.stem, "blocked"))
+        self.assertIn("ledger", errors.getvalue())
+        self.assertIn("partial 1", self.feature.read_text(encoding="utf-8"))
 
     def test_close_done_with_risks_records_failures(self) -> None:
         ph.run_verify(self.resolved, self.stem, self.py("import sys; sys.exit(2)"))
