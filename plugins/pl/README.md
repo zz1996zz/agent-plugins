@@ -4,7 +4,7 @@
 
 **`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 서브에이전트가 토론하고, 구현하고, 검증하고, 결정을 레포에 남깁니다**
 
-![version](https://img.shields.io/badge/version-0.7.0-blue)
+![version](https://img.shields.io/badge/version-0.8.0-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![history](https://img.shields.io/badge/history-docs%2Fpl%20in%20repo-7c3aed)
@@ -23,7 +23,7 @@ flowchart LR
     A(["/pl:pl · $pl 기능 요청"]) --> B{"규모"}
     B -->|"solo"| C["리드 혼자 구현 + 검증"]
     B -->|"light"| D["리드 분석 → 구현 → 리뷰어 1회"]
-    B -->|"full"| E["역할 서브에이전트 스폰<br/>(product·architect·qa …)"]
+    B -->|"full"| E["architect 기본<br/>필요한 분석 역할 추가"]
     E --> F["독립 메모 → 종합 → 사용자 결정 → 반론"]
     F --> G["PL 결정 (decisions/)"]
     G --> H["구현 + verify 증거 기록"]
@@ -35,8 +35,10 @@ flowchart LR
 ```
 
 - **solo**: 파일 1개, 새 파일·테스트·동작 변경 없음 → 노트 없이 바로 처리.
-- **light**: 파일 ≤ 3, 새 공개 API·스키마·외부 연동 없음 → 리드가 분석·구현하고 code reviewer가 한 번 본다.
-- **full**: 그 외 → 분석 역할(product analyst·architect·QA) → 구현 역할 → 리뷰 역할. 요청에 `light`/`full`을 적으면 그 단계로 강제된다.
+- **light**: 범위·수용 조건이 명확하고 기존 패턴과 검증으로 처리할 수 있는 기본 경로 → 리드 분석·구현(또는 engineer 한 명) → code reviewer. 파일 수만으로 full을 강제하지 않는다.
+- **full**: 새 계약 설계, 권한·데이터 보존·롤백 위험의 선행 분석, 미정 의존성이 필요한 경우 → architect 기본 분석 → 구현 → 리뷰. 미결정 제품 범위가 있으면 product, 설계 전에 검증 전략이 필요하면 QA를 추가한다. 요청에 `light`/`full`을 적으면 그 단계를 따른다.
+
+애매하면 light로 시작하고 구체적인 위험을 발견하면 full로 승격합니다. 단계별 예정 세션 수와 각 추가 세션의 독립 질문·산출물을 기록하며, 같은 조사를 역할별로 반복하지 않습니다. reviewer와 검증 신선도 기준은 두 경로 모두 유지합니다.
 
 ## 설치
 
@@ -93,6 +95,7 @@ docs/pl/
 
 - 공용 INDEX 파일을 두지 않고 `날짜-슬러그`별 노트를 만들어 **서로 다른 작업의 머지 충돌을 줄입니다.** 같은 노트나 `architecture.md`를 함께 수정하면 충돌할 수 있습니다. 목록은 `pl_history.py list`로 확인합니다.
 - 역할별 의견은 **요약**으로 남습니다(입장·근거·권고·열린 질문). 원문 대화록·비밀값·명령 출력은 커밋되지 않습니다.
+- 같은 단계의 원장 행·spawn 기록은 `pl_history.py ledger batch`로 묶습니다. `close`가 기록된 세션의 `Team:`을 생성하며, 완료 memo 근거가 없는 세션을 정상 완료로 세지 않습니다. 기존 단일 기록 명령도 지원합니다.
 - 레포 밖에서 쓰면 `~/.local/share/pl/history/<work>/`에 저장됩니다(`XDG_DATA_HOME` 존중). 위치를 옮기려면 플러그인 데이터 디렉터리의 `config.json`에 `{"historyRoot": "<절대경로>"}`.
 - 0.4.x의 Obsidian vault / Notion 기록은 자동 이전하지 않습니다. 옮기려면 vault의 `work/<slug>/features/*.md`·`decisions/*.md`를 `docs/pl/features/`·`docs/pl/decisions/`로 복사하면 됩니다(INDEX는 불필요). Notion은 페이지를 markdown으로 내보내 같은 위치에 두세요.
 

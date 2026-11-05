@@ -24,7 +24,7 @@ Never report `done` from role memos alone, stale test output, a clean-looking di
 
 ## Role Session Evidence
 
-호스트가 session ID를 반환하면 즉시 `Spawned`와 대기 상태를 ledger에 기록한다. 실제 최종 응답을 받은 뒤에만 Roles and Opinions·memo 전달 완료·최종 보고에 역할의 결과를 기재한다. spawn 예고나 대기 알림은 역할 결과가 아니다. 실행하지 못한 역할은 `not spawned — <reason>`으로 기록하고 lead role pass와 구분한다.
+호스트가 session ID를 반환하면 같은 단계의 `Spawned`와 대기 행을 `ledger batch` 한 번으로 기록한다. 실제 최종 응답을 받고 배정된 완료 조건을 확인한 뒤에만 완료 행·Roles and Opinions·최종 보고에 결과를 기재한다. spawn 예고나 대기 알림은 결과가 아니다. 미실행 역할은 `not spawned — <reason>`으로 기록한다.
 
 ## Safety Boundaries
 
@@ -55,6 +55,7 @@ Each reference is the single source for its topic. A solo pass reads none of the
 - `references/roles.md` — work sizing, role menu, labels, model and tool policy, spawn timing, the role brief contract (with the shared preamble), replacement. Read before spawning anyone.
 - `references/debate-protocol.md` — Round 0 through Close: memos, synthesis, user decisions, challenges, decide, implementation gates, review loop, close.
 - `references/history.md` — location rules, layout, helper commands, note sections, hygiene.
+- `references/codex.md` — Codex 전용 정의 전달·재개·hook 독립 기록. `spawn_agent` 호스트의 non-solo 작업에서 실행 전에 읽는다. Claude Code에서는 읽지 않는다.
 
 ## Platform Behavior
 
@@ -65,12 +66,12 @@ Common rules:
 - Explicit invocation of this skill is permission to use role sessions for the current feature unless the user says not to.
 - Only the lead spawns, resumes, or stops role sessions. Role sessions never spawn sessions of their own and never message each other; the lead relays challenges and handoffs.
 - 모든 역할은 독립 scope별로 같은 정의의 복수 세션을 실행할 수 있다. `references/roles.md`의 Role instances·Labels에 따라 고유 라벨·task ID·의존성·소유 경로를 정한다. 같은 단계의 실행 가능한 작업만 병렬 배정하고 호스트 슬롯이 부족하면 기다린다.
-- 역할 세션은 일반 subagent이며 최종 응답이 memo다. 같은 단계의 역할만 묶어서 실행한다. Claude에서는 **never pass a `name`**. Codex schema에 필수인 `task_name`은 전달한다(`pl-review` label은 `pl_review`로 변환; 소문자·숫자·밑줄만 사용). 역할 label과 반환된 session ID의 대응을 ledger에 기록한다.
+- 역할 세션은 일반 subagent이며 최종 응답이 memo다. 같은 단계의 역할만 묶어서 실행한다. Claude에서는 **never pass a `name`**. 역할 label과 반환된 session ID의 대응을 ledger에 기록한다. Codex 필수 인자는 전용 reference를 따른다.
 - `team-pl-*` 역할 정의와 shared preamble을 아래 mapping으로 적용한다. 정의를 생략한 generic helper, 다른 plugin agent, script 기반 fan-out으로 대체하지 않는다.
 
 | Term | Claude Code | Codex CLI |
 |---|---|---|
-| role session | `Agent`, `subagent_type: "pl:team-pl-<role>"`, `name` 없음 | `spawn_agent`: 아래 정의 전달 경로 또는 지원되는 custom `agent_type` |
+| role session | `Agent`, `subagent_type: "pl:team-pl-<role>"`, `name` 없음 | `spawn_agent`: `references/codex.md`의 정의 전달 경로 또는 지원되는 custom `agent_type` |
 | memo | 최종 응답; SubagentStop hook의 저장은 보조 수단 | 최종 응답 또는 완료 알림 본문. `wait_agent`가 도착 요약만 주면 알림 본문을 기다린다 |
 | resume (challenge, re-review) | `SendMessage` to the agent ID | CLI: `send_input` / 필요 시 `resume_agent`; collaboration: `followup_task` (`send_message`는 실행 중인 세션 전달용) |
 | stop a running session | `TaskStop` | CLI: `close_agent`; collaboration: `interrupt_agent` |
@@ -88,13 +89,7 @@ Common rules:
 
 ### Codex
 
-- 먼저 `spawn_agent`와 재개·대기 도구의 실제 schema를 확인한다. 도구가 없으면 역할 실행 불가를 보고하고, 사용자가 수락한 경우에만 labeled lead role pass로 진행한다. `wait_agent` 호출이나 예정된 역할 이름은 spawn 증거가 아니다.
-- **정의 전달 경로(설치 불필요):** `<skill-dir>/../../agents/team-pl-<role>.md`를 읽는다. YAML frontmatter를 제외한 역할 본문과 `references/roles.md`의 shared preamble, role brief contract의 모든 필드를 spawn의 `message` 또는 `prompt`에 담는다. 사용 가능한 일반 subagent로 실행하되 어떤 PL 정의를 적용했는지 기록한다. 역할·lane·memo 계약을 담은 이 경로는 정의 없는 generic helper 대체가 아니다.
-- **custom agent 경로(선택):** schema에 `agent_type`이 있고 `team-pl-<role>`이 실제 사용 가능한 type으로 확인될 때만 해당 type을 쓴다. 개인 TOML의 역할 본문이 현재 번들과 같고 `model`·`model_reasoning_effort` 고정이 없는지도 확인한다. 예전 설치본의 `xhigh`를 기본값으로 전파하지 않는다. 필요하면 `install-codex.sh`를 선택 설치할 수 있다. 파일 존재만으로 type 로드를 가정하지 않는다. 미설치·충돌·미노출·본문 차이가 있으면 정의 전달 경로를 사용한다고 알리고 진행한다. 개인 설정을 자동으로 덮어쓰지 않는다.
-- spawn에는 현재 schema의 필수 인자와 문맥 제어 인자를 채운다. `task_name`은 위 이름 규칙을 따른다. `fork_turns`를 지원하면 `"none"`을 명시하고, `fork_context` schema면 `false`를 사용한다. 완결된 역할 brief로 독립 실행하면 ephemeral 부모의 transcript 없이도 동작한다. `model`, `reasoning_effort`와 대응 override는 생략하고 일반 subagent 기본값은 외부 config에 맡긴다. Claude frontmatter의 `model` alias(`opus`/`sonnet`), `effort`, `tools`, `maxTurns`를 Codex 설정으로 변환하지 않는다.
-- 부모 sandbox와 도구 접근 권한이 적용되므로 역할 정의와 brief에 편집 금지·소유 경로를 반복한다. 산문을 강제 접근 제어로 주장하지 않는다. 읽기 전용 역할에 쓰기 권한이 남으면 Residual risk에 기록한다. 동시 실행 한도에 도달하면 완료를 기다리고 같은 단계의 남은 역할을 실행한다.
-- **hook 독립 기록:** 최종 응답을 실제 수신한 뒤 `python3 "<skill-dir>/scripts/pl_history.py" memo --feature <stem> --agent-id <반환된 ID>`의 stdin으로 원문을 전달한다. 반환 경로를 ledger와 역할 의견에 연결한다. `Status:`가 없으면 한 번 보완을 요청하고, 계속 없으면 partial로 기록한다. `verify`·리뷰 판정·`close`는 lead가 직접 실행한다. Codex의 prompt/agent hook handler, skill frontmatter hook, SubagentStop, transcript 위치·형식에 핵심 동작을 맡기지 않는다. command/MCP tool hook도 미신뢰·미지원이면 실행되지 않을 수 있다.
-- 복구 시 `current`, feature note, ledger, 저장 memo와 evidence부터 읽는다. 유효한 session ID는 현재 도구로 재개하고, unavailable 응답이나 누락된 응답일 때만 한 번 재실행한다. 재실행 label과 이전 ID를 기록하며 이미 받은 memo를 중복 역할로 세지 않는다.
+`spawn_agent` 호스트는 규모 판정 후 non-solo 작업을 실행하기 전에 `references/codex.md`를 읽고 현재 schema와 대조한다. 복구·compaction 뒤 해당 계약이 문맥에 없으면 다시 읽는다.
 
 ## Workflow
 
@@ -102,17 +97,17 @@ Common rules:
 2. **Size.** Pick exactly one size and state it with its reason before any other action:
    - **First look for a size word.** If the request contains `full`, `light`, or `solo` (typically as its first word — it is an instruction to you, not part of the feature), that word *is* the size; do not apply the table below. "team discussion" also means `full`.
    - Otherwise `solo` only when ALL hold: exactly one existing file changes, no new file, no test added or modified, no user-visible behavior or output-shape change. Adding a function plus a test file is never `solo`.
-   - Otherwise `light` when at most three files change, no new public API, schema, or external integration, and user-visible changes are only what the request names: the lead analyzes and implements (or delegates to one engineer), then `team-pl-code-reviewer` reviews once. Record the reviewer spawn with `ledger lifecycle Spawned` even in `light`.
-   - `full` otherwise: discovery roles → implementation roles → review roles. When unsure between `light` and `full`, choose `full`.
+   - 그 외에는 `light`를 기본으로 한다. 범위·수용 조건이 명확하고 기존 패턴과 검증으로 처리할 수 있으면 여러 파일·테스트 변경도 light다. 파일 3개 이하는 참고값이며 파일 수만으로 승격하지 않는다. 리드가 분석·구현하거나 engineer 한 명에게 맡긴 뒤 `team-pl-code-reviewer`가 검토한다.
+   - `full`은 공개 API·스키마·외부 연동의 계약을 새로 설계해야 하거나, 권한·데이터 보존·롤백 등 위험에 분석이 선행해야 하거나, 구현을 막는 의존성이 미정일 때 선택한다. discovery → implementation → review 순서를 지키고 분석 없이 구현으로 넘어가지 않는다. 애매하면 light로 시작하고 구체적인 승격 사유를 발견하면 Size와 역할 계획을 갱신한다.
    `solo`: implement, verify fresh, report — no history. Otherwise run `pl_history.py where --json`, then `pl_history.py feature "<title>" --request "<request>"`, and write Request, Scope (with `Size:` and the reason), and planned roles before touching code.
-3. **Discover** (`full`). Round 0 ledger rows (`pl_history.py ledger row`), then spawn the discovery roles in one message — `pl-architect` and `pl-qa` always, plus `pl-product` unless the request already states acceptance criteria and scope without ambiguity; `full` never goes straight to implementation. Record each spawn with `ledger lifecycle Spawned`, each memo under Roles and Opinions, then write Synthesis.
+3. **Discover** (`full`). 기본은 `pl-architect` 하나다. 미결정 제품 범위가 있을 때 product, 설계 전에 검증 전략을 정해야 할 때 QA를 추가한다. `references/roles.md`의 Scaling에 따라 추가 세션의 독립 질문·산출물과 예정 세션 수를 기록한다. 같은 단계의 반환 ID·대기 행은 `ledger batch`로 묶고, 실제 완료 응답을 받은 행도 묶어 갱신한다. 역할 의견과 Synthesis는 리드가 작성한다.
 4. **User decisions** (`full`). Batch every user-facing decision into one message (`references/debate-protocol.md`, User decisions). Technical decisions are the lead's.
 5. **Challenge** (`full`). Round 2 by resume, or record `skipped — no material conflict in synthesis`.
 6. **Decide.** Record durable decisions with `pl_history.py decision`; convert decisions into ledger rows; run the analyze gate.
-7. **Implement.** Follow the repo's local instructions first. The lead owns integration; before delegating any edit, run `pl_history.py ledger baseline "<wave>"` and give the session isolated ownership; after the wave, run the change-shape gate against that baseline and update the Execution Ledger (`ledger row … --status done`).
+7. **Implement.** Follow the repo's local instructions first. The lead owns integration; before delegating any edit, run `pl_history.py ledger baseline "<wave>"` and give the session isolated ownership; after the wave, run the change-shape gate against that baseline and update the Execution Ledger with `ledger batch`.
 8. **Verify.** Run every verification command through `pl_history.py verify --feature <stem> -- <command>` (pass a `verifyCommands` entry as one quoted shell string): the narrowest relevant tests first, broader tests when the touched surface requires it, then every `verifyCommands` entry. After any later code change, re-run them — evidence older than the last edit is stale. For runnable or user-facing behavior, exercise the real app, CLI, or service path through the repo's documented run procedure; tests alone are not full behavioral evidence. Role-session results are their own checks, never the lead's evidence. If a command cannot run, record why under Residual risk.
 9. **Review.** Run `pl_history.py diff`, spawn `team-pl-code-reviewer`, run both gates and the review loop with its three-cycle cap (`references/debate-protocol.md`).
-10. **Close.** Settle ledger rows (`ledger row`), fill Completion's `Team:` line from `ledger.md`'s Team Lifecycle, run `pl_history.py close --feature <stem> --status <status>` with the status the Standing Completion Contract yields; if `done` is refused, fix the cause or close as `done-with-risks`. Stop any session still running.
+10. **Close.** Settle ledger rows with `ledger batch`, then run `pl_history.py close --feature <stem> --status <status>` with the status the Standing Completion Contract yields. close가 기록된 세션의 `Team:`을 생성하므로 수기로 반복 집계하지 않는다. `done`이 거부되면 원인을 해결하거나 `done-with-risks`로 닫는다. Stop any session still running.
 11. **Final response.** Report key decisions, remaining risks, the status, and the paths of the feature and decision notes alongside the standard summary; remind the user that the history files are theirs to commit with the code.
 
 ## Decision Rules

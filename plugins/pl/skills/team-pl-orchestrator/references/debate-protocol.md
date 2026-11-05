@@ -4,13 +4,13 @@ The discussion-to-close loop for `full` work. `light`는 Implementation·리뷰 
 
 ## Round 0: Brief
 
-Before spawning, add one Execution Ledger row per planned memo with `pl_history.py ledger row` (`history.md`): task `<label>-memo` (고유 인스턴스 라벨 전체), owner label, dependencies, deliverable (the memo plus `read-only` or the editable files, and `Run: <command>` when a runnable check decides completion), status `pending`. 같은 역할의 복수 세션은 `roles.md`의 Role instances·Labels 규칙으로 scope와 task ID를 분리한다. Then build each brief from the Role brief contract in `roles.md` and spawn the stage's roles in one message (host mapping in SKILL.md Platform Behavior).
+spawn 전에 각 memo의 task `<label>-memo`(고유 라벨 전체), owner, dependencies, deliverable(memo·편집 경계·필요한 `Run: <command>`), 완료 조건을 brief에 정한다. `roles.md`의 Scaling에 따라 같은 단계의 세션 수·추가 역할의 독립 질문을 기록한다. 같은 역할의 복수 세션은 Role instances·Labels 규칙으로 scope와 task ID를 분리한다. 같은 단계의 역할을 함께 실행한다. 반환 ID를 받은 뒤 대기 행과 Spawned를 아래처럼 한 번에 기록하므로 예정 memo마다 별도 helper를 호출하지 않는다.
 
 ## Round 1: Independent memos
 
 Each role answers independently; do not show other roles' memos during Round 1. A memo is the session's final response (where the host's memo-capture hook runs, it is also saved under `.runtime/<stem>/memos/`; read those files when present). 부분 결과는 남은 작업·장애 원인을 확인해 진행 가능하면 같은 세션을 재개한다. 완료하지 못한 결과는 `partial`로 기록하고, 반복 실패·정체는 `roles.md`의 Replacement 규칙을 따른다.
 
-After each spawn, `ledger lifecycle Spawned "<label> (<agent id>)"`. Record every delivered memo as a summary under Roles and Opinions in the feature note. 배정된 완료 조건을 충족한 최종 응답을 실제 수신했을 때만 해당 ledger row를 `done`으로 기록한다(`ledger row <task> --status done --evidence "<memo id>"`). 재개 중인 부분 결과는 행에 진행 상태와 근거를 남긴다. 최종 미완료·실패 세션만 Team Lifecycle의 `Partial`/`Failed`에 기록하고, `BLOCKED` 또는 부분 응답을 받았다는 이유만으로 행을 완료하지 않는다.
+같은 단계의 spawn 반환 ID를 받은 즉시 `ledger batch` 한 번으로 각 memo의 pending 행과 `Spawned: <label> (<agent id>)`를 함께 기록한다(`history.md`의 JSON 예시). 실제 수신한 memo는 feature note의 Roles and Opinions에 요약한다. 배정된 완료 조건을 충족한 최종 응답만 `done` 행과 memo 근거로 갱신하며, 같은 단계의 완료 행도 batch로 묶는다. 재개 중인 부분 결과는 행에 진행 상태와 근거를 남긴다. 최종 미완료·실패 세션은 같은 batch의 lifecycle `Partial`/`Failed`에 기록한다. hook이 파일을 저장했거나 `Status: DONE`을 반환했다는 이유만으로 배정된 작업을 완료로 판정하지 않는다.
 
 ## Synthesis
 
@@ -52,4 +52,4 @@ Prefer one final integrator: the lead owns integration and prevents same-file ov
 
 ## Close
 
-Settle every ledger row (never mark abandoned work complete; record abandonment). Fill Completion's `Team:` line from the runtime ledger's Team Lifecycle. Bring feature and decision notes up to date, then run `pl_history.py close` with the status the Standing Completion Contract in SKILL.md yields. Stop any role session still running; completed sessions need nothing.
+미완료·중단을 완료로 바꾸지 않고 ledger 행을 batch로 정리한다. feature·decision note를 갱신한 뒤 Standing Completion Contract에 맞춰 `pl_history.py close`를 실행한다. close가 원장의 Spawned·memo 완료 행에서 Completion의 `Team:`을 생성하므로 수기 집계는 하지 않는다. 원장이 없는 과거 Team 기록은 보존하고, 미완료·실패나 누락된 memo를 정상 완료로 추정하지 않는다. 실행 중인 역할만 중지한다.

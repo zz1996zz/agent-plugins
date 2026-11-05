@@ -23,22 +23,22 @@ Pick one size at intake and record it with its reason in the feature note's `Siz
 | Size | When all of these hold | Who works |
 |---|---|---|
 | `solo` | exactly one file changes; no new file; no test added or modified; no user-visible behavior or output shape changes | the lead alone; no history note; `done` needs fresh verification only |
-| `light` | at most three files change; no new public API, schema, or external integration; user-visible changes are only what the request names | the lead does intake analysis; the lead or one engineer implements; `team-pl-code-reviewer` reviews once |
-| `full` | anything else | discovery roles → implementation roles → review roles as below |
+| `light` | 범위·수용 조건이 명확하고 기존 패턴과 검증으로 처리할 수 있는 기본 경로. 파일 수는 참고값이다 | 리드가 분석하고 직접 구현하거나 engineer 한 명에게 맡긴 뒤 `team-pl-code-reviewer`가 검토한다 |
+| `full` | 새 공개 API·스키마·외부 계약의 설계, 권한·데이터 보존·롤백 위험의 선행 분석, 또는 구현을 막는 미정 의존성이 있다 | discovery roles → implementation roles → review roles as below |
 
-Adding a CLI flag, an output mode, or a test file is never `solo`. When unsure between `light` and `full`, choose `full`.
+Adding a CLI flag, an output mode, or a test file is never `solo`. 애매하면 light로 시작한다. 파일 3개 이하는 참고값이며 파일 수만으로 full을 강제하지 않는다. 작업 중 구체적인 승격 사유를 발견하면 Size·역할 계획을 갱신하고 full의 discovery를 거친다.
 
 ## Role menu
 
-Core (default for `full`; the lead may skip `team-pl-product-analyst` when the request already states acceptance criteria and scope without ambiguity):
+기본 역할:
 
-- `team-pl-product-analyst` — requirements, acceptance criteria, edge cases, scope; its `Decisions needed` go to the user (debate-protocol, User decisions).
-- `team-pl-architect` — boundaries, contracts, data flow, maintainability.
-- `team-pl-qa-engineer` — test strategy, regression risk, verification gaps.
+- `team-pl-architect` — full discovery의 기본 한 세션. 경계·계약·데이터 흐름·유지보수 질문을 맡는다.
 - `team-pl-code-reviewer` — post-implementation review, both gates.
 
 Conditional (spawn only when the surface warrants):
 
+- `team-pl-product-analyst` — 미결정 제품 범위·수용 조건·우선순위가 있을 때 추가한다. 제품 관련 `Decisions needed`는 사용자에게 전달한다.
+- `team-pl-qa-engineer` — 복잡한 상태 전이·마이그레이션·복구처럼 설계 전에 검증 전략을 정해야 할 때 추가한다. 일반적인 테스트 계획은 리드가 만들고 reviewer가 누락을 검토한다.
 - `team-pl-backend-engineer` — server logic, APIs, jobs, auth code.
 - `team-pl-frontend-engineer` — UI, client state, accessibility.
 - `team-pl-data-engineer` — schemas, migrations, analytics, retention.
@@ -46,6 +46,13 @@ Conditional (spawn only when the surface warrants):
 - `team-pl-integration-reviewer` — third-party APIs, webhooks, queues, MCP servers, cross-service flows.
 
 Keep the team small; coordination cost grows with every session.
+
+## Scaling
+
+- light는 discovery 세션 0개, 구현은 리드 또는 engineer 한 명, 구현 뒤 reviewer 한 명을 기본으로 한다. 수정 재검토는 같은 reviewer를 재개한다.
+- full은 discovery architect 한 명을 기본으로 하고, 구현·리뷰 역할도 필요한 범위만 배정한다. 위 조건이 충족된 product·QA·security·integration만 추가한다.
+- 단계 시작 전에 예정 세션 수와 각 추가 세션의 독립 질문·산출물을 feature note에 적는다. 이미 다른 세션이 답하는 질문이면 추가하지 않고 그 결과를 재사용한다.
+- 같은 역할의 복수 실행은 아래 독립 scope·의존성·파일 소유권 조건을 충족할 때만 한다. 별도 세션으로 나눌 근거가 없는 연속 작업은 리드나 기존 세션이 맡는다. 고정 상한으로 필요한 역할을 누락하지 않는다.
 
 ## Role instances
 
@@ -82,7 +89,7 @@ Use these labels in the ledger, the feature note, and the brief so a reader can 
 
 ## Spawn timing
 
-- Discovery/design: `pl-architect` and `pl-qa` (plus `pl-product` when kept) at the start of `full` work.
+- Discovery/design: full 시작 시 `pl-architect` 하나를 기본으로 하고 조건을 충족한 QA·product만 추가한다.
 - Implementation: engineers only after scope, dependencies, success criteria, and file ownership are set.
 - Review: `pl-review` only after a diff exists; add security and integration reviewers only when the changed surface warrants.
 - Batch each stage's spawns in one message. Never pull a later stage's role forward just to batch it.
