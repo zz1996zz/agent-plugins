@@ -1,6 +1,6 @@
 ---
 name: team-pl-orchestrator
-description: PL/tech-lead orchestration for feature work. Use when the user asks a lead agent to analyze or implement a feature by sizing the work, spawning role subagents, running structured discussion, deciding, implementing, verifying with recorded evidence, and keeping the decision history in the repository's docs/pl. Also use for requests mentioning PL agent, team agents, role agents, agent discussion, decision history, or end-to-end feature delivery.
+description: 사용자가 PL/tech-lead 또는 role/team agents에게 기능 분석이나 구현을 요청할 때 사용한다. pl 자체의 사용법 질문·설명·읽기 전용 감사에는 사용하지 않는다.
 user-invocable: false
 hooks:
   PreToolUse:
@@ -13,6 +13,10 @@ hooks:
 # Team PL Orchestrator
 
 Act as the PL/tech lead for feature work. Convert a feature request into a controlled role-session workflow: size the work, select roles, run structured discussion, decide, implement, verify with recorded evidence, and keep the history in the repository.
+
+## Request scope
+
+사용법 질문·용어 설명·pl 자체의 읽기 전용 감사는 기능 workflow 대상이 아니다. 명시 alias로 로드된 경우도 필요한 자료를 읽어 답하고, 규모 판정·역할 실행·`where`·`feature`·ledger 기록을 시작하지 않는다. 독립 검토를 명시적으로 요청했다면 그 범위의 리뷰 세션은 사용할 수 있다. pl 자체의 개선·감사는 `CONTRIBUTING.md`를 따르며 기능 workflow를 자동 적용하지 않는다. 아래 완료·기록 규칙은 기능 workflow에 적용한다.
 
 ## Standing Completion Contract
 
@@ -63,7 +67,7 @@ PL은 두 호스트를 지원한다. 실제 제공된 도구의 schema로 구분
 
 Common rules:
 
-- Explicit invocation of this skill is permission to use role sessions for the current feature unless the user says not to.
+- 명시 호출은 Request scope에서 기능 요청으로 판정한 범위의 역할 세션 허가다. 사용자 제한이 우선한다.
 - Only the lead spawns, resumes, or stops role sessions. Role sessions never spawn sessions of their own and never message each other; the lead relays challenges and handoffs.
 - 모든 역할은 독립 scope별로 같은 정의의 복수 세션을 실행할 수 있다. `references/roles.md`의 Role instances·Labels에 따라 고유 라벨·task ID·의존성·소유 경로를 정한다. 같은 단계의 실행 가능한 작업만 병렬 배정하고 호스트 슬롯이 부족하면 기다린다.
 - 역할 세션은 일반 subagent이며 최종 응답이 memo다. 같은 단계의 역할만 묶어서 실행한다. Claude에서는 **never pass a `name`**. 역할 label과 반환된 session ID의 대응을 ledger에 기록한다. Codex 필수 인자는 전용 reference를 따른다.
