@@ -4,7 +4,7 @@
 
 **`/pl:pl`(Claude Code) 또는 `$pl`(Codex CLI) 한 번으로 역할 서브에이전트가 토론하고, 구현하고, 검증하고, 결정을 레포에 남깁니다**
 
-![version](https://img.shields.io/badge/version-0.8.0-blue)
+![version](https://img.shields.io/badge/version-0.8.1-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?logo=apple)
 ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%7C%20Codex%20CLI-d97757)
 ![history](https://img.shields.io/badge/history-docs%2Fpl%20in%20repo-7c3aed)
@@ -39,6 +39,8 @@ flowchart LR
 - **full**: 새 계약 설계, 권한·데이터 보존·롤백 위험의 선행 분석, 미정 의존성이 필요한 경우 → architect 기본 분석 → 구현 → 리뷰. 미결정 제품 범위가 있으면 product, 설계 전에 검증 전략이 필요하면 QA를 추가한다. 요청에 `light`/`full`을 적으면 그 단계를 따른다.
 
 애매하면 light로 시작하고 구체적인 위험을 발견하면 full로 승격합니다. 단계별 예정 세션 수와 각 추가 세션의 독립 질문·산출물을 기록하며, 같은 조사를 역할별로 반복하지 않습니다. reviewer와 검증 신선도 기준은 두 경로 모두 유지합니다.
+
+사용법 질문·용어 설명·pl 자체의 읽기 전용 감사는 기능 workflow를 시작하지 않습니다. 명시 호출에서도 요청 의도와 제한을 먼저 적용합니다. `light`는 기존 기록 헤딩을 유지하고, 수행하지 않은 종합·반론에 남은 쟁점도 없으면 `n/a — light`로 씁니다. 역할·결정·리뷰·검증 증거는 보존합니다. reviewer는 근거 있는 결함과 확인이 필요한 우려를 구분해 보고하며, 중요한 미확인 우려는 리드가 처리합니다.
 
 ## 설치
 

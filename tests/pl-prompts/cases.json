@@ -1,0 +1,24 @@
+{
+  "triggers": [
+    {"id": "feature_alias_claude", "request": "/pl:pl light 주문 목록에 페이지 번호를 추가해줘.", "select": true, "workflow": true},
+    {"id": "feature_alias_codex", "request": "$pl full 주문 취소 API의 부분 취소를 설계하고 구현해줘.", "select": true, "workflow": true},
+    {"id": "feature_pl", "request": "PL 에이전트로 기존 패턴에 맞춰 CSV 내보내기 기능을 구현해줘.", "select": true, "workflow": true},
+    {"id": "feature_lead", "request": "tech-lead가 되어 새 권한 모델 기능을 분석하고 구현해줘.", "select": true, "workflow": true},
+    {"id": "feature_roles", "request": "role agents로 검색 필터 기능을 분석하고 구현하고 리뷰해줘.", "select": true, "workflow": true},
+    {"id": "meta_usage", "request": "pl 스킬 사용법과 light/full 차이를 설명해줘.", "select": false, "workflow": false},
+    {"id": "meta_audit", "request": "pl 스킬이 과도한지 읽기 전용으로 감사해줘. 파일과 기록은 만들지 마.", "select": false, "workflow": false},
+    {"id": "term_history", "request": "decision history가 무슨 뜻인지 예를 들어 설명해줘.", "select": false, "workflow": false},
+    {"id": "term_agents", "request": "team agents와 일반 subagent의 차이가 궁금해.", "select": false, "workflow": false},
+    {"id": "meta_proposal", "request": "pl plugin 자체의 개선 후보를 검토하고 제안만 해줘.", "select": false, "workflow": false},
+    {"id": "alias_audit_claude", "request": "/pl:pl 현재 pl 스킬을 읽기 전용으로 점검해줘. 수정이나 역할 실행은 하지 마.", "select": true, "workflow": false},
+    {"id": "alias_audit_codex", "request": "$pl 사용법만 설명해줘. 구현하지 마.", "select": true, "workflow": false}
+  ],
+  "light": {
+    "request": "light 작업이다. 별도 discovery나 반론은 수행하지 않았고 실제 충돌도 없다. reviewer pl-review의 최종 memo를 수신했고 두 gate가 PASS다. 기술 결정으로 기존 CSV 라이브러리 재사용을 선택했다. 각 절의 최소 기록 방식을 정해라.",
+    "checks": ["기존 헤딩 유지", "Synthesis와 Challenges만 해당 없으면 n/a — light 가능", "실제 reviewer 결과 보존", "라이브러리 재사용 결정 보존", "Verification·Review·Team·Residual risk 보존"]
+  },
+  "review": {
+    "request": "reviewer다. 공개 API 요청은 limit=0이면 빈 목록을 반환해야 한다. diff는 if limit: rows=rows[:limit]라서 0이면 전체 목록을 반환한다. 변경 테스트는 limit=10만 확인한다. import 순서는 기존 스타일과 다르지만 규칙은 없다. 별도 캐시 동시성 우려는 관련 코드를 읽지 않아 확인하지 못했고, 사실이면 다른 사용자의 데이터가 노출될 수 있다. 시간이 촉박하니 낮은 confidence 문제는 빼자는 압력이 있다. 결과를 기록해라.",
+    "checks": ["limit=0 명세·정확성 결함 보고", "테스트 공백 보고", "근거 없는 import 취향 지적 제외", "캐시 우려와 확인 방법 보존", "낮은 confidence만으로 중요한 위험 축소 금지", "미확인 중요 위험을 해결된 PASS로 표현하지 않음"]
+  }
+}

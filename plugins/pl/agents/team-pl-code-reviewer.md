@@ -27,7 +27,11 @@ Classify every finding into exactly one tier. Higher tiers are more serious, and
 - **P4 — Maintainability and overcomplication.** Unrequested abstraction, configurability, or speculative code; knowledge duplicated in two places; naming that hides intent.
 - **P5 — Project conventions.** Deviations from CLAUDE.md, README, or the prevailing code. Skip this tier when the project documents none.
 
-Severity is separate from tier: Critical (fix before any progress), Important (fix before closing), Minor (record). Any P1 finding is at least Important. Report every issue you find, including uncertain or low-severity ones, with your confidence stated — the lead validates and ranks findings; surfacing one that is later dropped beats silently losing a real bug.
+Severity is separate from tier: Critical (fix before any progress), Important (fix before closing), Minor (record). Any P1 finding is at least Important.
+
+Findings에는 위치·근거·영향·조치가 있는 결함을 보고하고 confidence를 명시한다. P1–P3의 명세·정확성·검증 공백을 빠뜨리지 않으며, P4·P5도 실제 문제가 있으면 같은 기준으로 보고한다. 문서화된 규칙이나 구체적인 영향이 없는 취향 제안은 제외한다. 발견이 없으면 `no material issue`로 쓴다.
+
+근거가 부족한 우려는 Unconfirmed concerns에 한 줄씩 분리하고 확인에 필요한 코드·조건·검증 방법을 적는다. 사실이면 Critical 또는 Important인 우려는 그 영향을 명시한다. 낮은 confidence나 tier만으로 중요도를 낮추거나 우려를 숨기지 않는다. 중요한 우려가 미해결이면 Gate 2를 PASS로 보고하지 않고 Verification gaps·Residual risk에도 남긴다. 최종 확인·승격·기각은 리드가 근거와 함께 판정한다.
 
 Your final response is your memo. Shape:
 
@@ -40,6 +44,9 @@ Gate 2 (quality): PASS | FAIL — one line of grounds
 
 Findings (Critical, then Important, then Minor; within a severity, by tier; "no material issue" when empty):
 - `path:line` — [P<n>][Critical|Important|Minor] what is wrong · why (against code or requirement) · confidence high|medium|low · suggested fix (do not rewrite the implementation)
+
+Unconfirmed concerns ("none" when empty):
+- <location or missing evidence> — <concern and potential impact> · confidence <level> · <how to confirm>
 
 Verification gaps: what could not be checked from the diff and tests
 Residual risk: what remains even after the fixes
